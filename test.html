@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>בדיקות — תכנון טיול ותקציב</title>
+<link rel="stylesheet" href="./css/tokens.css">
 <style>
   body { font: 16px/1.6 -apple-system, system-ui, sans-serif; background:#FCFCFC; color:#000; margin:0; padding:16px 16px 80px; }
   h1 { font-size:20px; }
@@ -23,6 +24,12 @@
   // כל קובץ בדיקות מייצא default async שמריץ את עצמו.
   const modules = [
     './tests/catalog-ids.test.js',
+    './tests/ui.test.js',
+    './tests/db.test.js',
+    './tests/trips.test.js',
+    './tests/itinerary.test.js',
+    './tests/catalog.test.js',
+    './tests/prep.test.js',
   ];
   for (const m of modules) {
     try {
