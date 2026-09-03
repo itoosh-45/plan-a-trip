@@ -2,19 +2,29 @@ import { suite, assertEqual, assertTrue } from './harness.js';
 import * as db from '../js/db.js';
 import * as trips from '../js/trips.js';
 import * as it from '../js/itinerary.js';
-import * as budget from '../js/budget.js';
 import * as excel from '../js/excel.js';
 
 async function tripWithData() {
   await db.wipe();
-  const t = await trips.createTrip({ name: 'אקסל', homeCurrency: 'ILS', totalBudget: 5000 });
+  const t = await trips.createTrip({
+    name: 'אקסל', startDate: '2026-10-01', endDate: '2026-10-10', currency: 'JPY', totalBudget: 5000,
+  });
   const cats = await trips.categories(t.id);
-  const seg = await it.saveSegment(t.id, { city: 'טוקיו', country: 'יפן', startDate: '2026-10-01', endDate: '2026-10-05', currency: 'JPY' });
-  await it.saveItem(t.id, { segmentId: seg.id, type: 'attraction', title: 'מקדש', date: '2026-10-02', time: '10:00', categoryId: cats[0].id, plannedAmount: 100, actualAmount: 85, currency: 'JPY', rateToILS: 0.024 });
-  await it.saveItem(t.id, { type: 'other', title: 'בלי מקטע', date: '2026-10-06' });
-  await budget.setPlanned(t.id, cats[0].id, 2000);
-  await db.put(db.STORES.expenses, { tripId: t.id, amount: 45, currency: 'ILS', date: '2026-10-03', categoryId: cats[1].id, method: 'cash', note: 'ראמן' });
-  return { trip: t, cats, seg };
+  const seg = await it.saveSegment(t.id, {
+    city: 'טוקיו', country: 'יפן', startDate: '2026-10-01', endDate: '2026-10-05',
+    currency: 'JPY', allocation: 2000,
+  });
+  const gen = await it.generalSegment(t.id);
+  await it.saveItem(t.id, {
+    segmentId: seg.id, type: 'attraction', title: 'מקדש', date: '2026-10-02', time: '10:00',
+    categoryId: cats[0].id, plannedAmount: 100, currency: 'JPY', rateToILS: 0.024,
+  });
+  await it.saveItem(t.id, { segmentId: gen.id, type: 'other', title: 'בלי יעד', date: '2026-10-06' });
+  await db.put(db.STORES.expenses, {
+    tripId: t.id, kind: 'expense', amount: 45, currency: 'ILS', date: '2026-10-03',
+    segmentId: seg.id, categoryId: cats[1].id, note: 'ראמן',
+  });
+  return { trip: t, cats, seg, gen };
 }
 
 export default async function () {
@@ -34,7 +44,6 @@ export default async function () {
       segments: await it.listSegments(trip.id),
       items: await it.listItems(trip.id),
       expenses: await db.all(db.STORES.expenses, trip.id),
-      budgetRows: await budget.rows(trip.id),
     };
 
     const blob = await excel.build(trip.id);
@@ -46,16 +55,14 @@ export default async function () {
       segments: await it.listSegments(trip.id),
       items: await it.listItems(trip.id),
       expenses: await db.all(db.STORES.expenses, trip.id),
-      budgetRows: await budget.rows(trip.id),
     };
 
-    assertEqual(after.segments.map(s => [s.city, s.country, s.startDate, s.endDate, s.currency]),
-      before.segments.map(s => [s.city, s.country, s.startDate, s.endDate, s.currency]));
-    assertEqual(after.items.map(i => [i.title, i.date, i.time, i.plannedAmount, i.actualAmount, i.currency, i.rateToILS, i.categoryId]),
-      before.items.map(i => [i.title, i.date, i.time, i.plannedAmount, i.actualAmount, i.currency, i.rateToILS, i.categoryId]));
-    assertEqual(after.expenses.map(e => [e.amount, e.currency, e.date, e.categoryId, e.method, e.note]),
-      before.expenses.map(e => [e.amount, e.currency, e.date, e.categoryId, e.method, e.note]));
-    assertEqual(after.budgetRows.map(r => [r.categoryId, r.planned]), before.budgetRows.map(r => [r.categoryId, r.planned]));
+    const segShape = x => [x.city, x.country, x.startDate, x.endDate, x.currency, x.kind, x.allocation];
+    assertEqual(after.segments.map(segShape), before.segments.map(segShape));
+    const itemShape = i => [i.title, i.date, i.time, i.plannedAmount, i.currency, i.rateToILS, i.categoryId, i.segmentId];
+    assertEqual(after.items.map(itemShape), before.items.map(itemShape));
+    const expShape = e => [e.amount, e.currency, e.date, e.categoryId, e.kind, e.note, e.segmentId];
+    assertEqual(after.expenses.map(expShape), before.expenses.map(expShape));
   });
 
   s.test('parse בלבד (בלי apply) לא נוגע בשום נתון קיים', async () => {
@@ -122,9 +129,10 @@ export default async function () {
   });
 
   s.test('קובץ עם 500 הוצאות (ענק יחסית) נקרא בזמן סביר', async () => {
-    const { trip, cats } = await tripWithData();
+    const { trip, cats, seg } = await tripWithData();
     const rows = Array.from({ length: 500 }, (_, i) => ({
-      tripId: trip.id, amount: i + 1, currency: 'ILS', date: '2026-10-01', categoryId: cats[0].id, method: 'cash',
+      tripId: trip.id, kind: 'expense', amount: i + 1, currency: 'ILS', date: '2026-10-01',
+      segmentId: seg.id, categoryId: cats[0].id,
     }));
     await db.bulkPut(db.STORES.expenses, rows);
     const t0 = performance.now();

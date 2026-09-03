@@ -1,168 +1,107 @@
 import * as db from './db.js';
 import * as trips from './trips.js';
 import * as it from './itinerary.js';
-import * as prep from './prep.js';
+import * as expenses from './expenses.js';
+import * as rates from './rates.js';
 
-export function round2(n) {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
+export const CASH_IN_WALLET = 'מזומן בארנק';
+export const NO_CATEGORY = 'ללא קטגוריה';
 
-const STALE_MS = 24 * 60 * 60 * 1000; // מעל יממה נחשב "ישן" — עדיין מוצג, לא חוסם
+const round2 = rates.round2;
 
-function pairKey(currency, base) {
-  return `${currency.toUpperCase()}_${base.toUpperCase()}`;
-}
-
-/** השער השמור למטבע. null אם אין שער שמור — הקוראים מבקשים שער ידני. */
-export async function getRate(currency, base = 'ILS') {
-  const cur = (currency || base).toUpperCase();
-  if (cur === base.toUpperCase()) return { rate: 1, ts: new Date().toISOString(), source: 'identity', stale: false };
-  const row = await db.get(db.STORES.fxRates, pairKey(cur, base));
-  if (!row) return null;
-  return { rate: row.rate, ts: row.ts, source: row.source, stale: Date.now() - Date.parse(row.ts) > STALE_MS };
-}
-
-async function fetchFrankfurter(currency, base) {
-  const res = await fetch(`https://api.frankfurter.dev/v1/latest?base=${currency}&symbols=${base}`);
-  if (!res.ok) throw new Error('frankfurter unavailable');
-  const data = await res.json();
-  const rate = data?.rates?.[base];
-  if (!rate) throw new Error('currency not supported by frankfurter');
-  return rate;
-}
-
-async function fetchErApi(currency, base) {
-  const res = await fetch(`https://open.er-api.com/v6/latest/${currency}`);
-  if (!res.ok) throw new Error('er-api unavailable');
-  const data = await res.json();
-  const rate = data?.rates?.[base];
-  if (!rate) throw new Error('currency not supported by er-api');
-  return rate;
+/** שער המטבע הראשי של הטיול, לצורך תצוגה בלבד. שערי הרשומות עצמן קפואים. */
+async function tripRateToILS(trip) {
+  if (!trip?.currency || trip.currency === 'ILS') return 1;
+  return (await rates.getRate(trip.currency))?.rate || 1;
 }
 
 /**
- * מרענן שערים לרשימת מטבעות: Frankfurter קודם, נפילה ל-er-api. לא נכשל ולא
- * זורק על מטבע בודד שנכשל — מחזיר {ok:false} עבורו וממשיך לבא אחריו.
+ * כל הכסף של הטיול במקום אחד.
+ *   סך הוצאות = הוצאות שאינן מזומן + סך המשיכות
+ *   פילוח קטגוריות = הוצאות + הוצאות מזומן בפועל + פרוסת "מזומן בארנק"
+ * שני החישובים חייבים להסתכם לאותו מספר, ולכן הם יושבים בפונקציה אחת.
  */
-export async function refreshRates(currencies, base = 'ILS') {
-  const results = {};
-  for (const raw of currencies) {
-    const cur = (raw || '').toUpperCase();
-    if (!cur || cur === base.toUpperCase()) continue;
-    let rate, source;
-    try {
-      rate = await fetchFrankfurter(cur, base);
-      source = 'frankfurter';
-    } catch {
-      try {
-        rate = await fetchErApi(cur, base);
-        source = 'er-api';
-      } catch {
-        results[cur] = { ok: false };
-        continue;
-      }
-    }
-    const ts = new Date().toISOString();
-    await db.put(db.STORES.fxRates, { pair: pairKey(cur, base), rate, ts, source });
-    results[cur] = { ok: true, rate, source, ts };
-  }
-  return results;
-}
-
-/** שער ידני שהמשתמש הזין כשלא נמצא שער אוטומטי. נשמר כמו כל שער אחר. */
-export async function setManualRate(currency, rate, base = 'ILS') {
-  const n = Number(rate);
-  if (!Number.isFinite(n) || n <= 0) throw new Error('השער חייב להיות מספר גדול מאפס');
-  const ts = new Date().toISOString();
-  await db.put(db.STORES.fxRates, { pair: pairKey(currency, base), rate: n, ts, source: 'manual' });
-  return { rate: n, ts, source: 'manual', stale: false };
-}
-
-/** צורב שער על סכום ברגע ההזנה. הרשומה קפואה: עדכון שער עתידי לא נוגע בה. */
-export function stamp(amount, currency, rateInfo) {
-  const out = { amount: Number(amount) || 0, currency: (currency || 'ILS').toUpperCase() };
-  if (rateInfo?.rate) {
-    out.rateToILS = rateInfo.rate;
-    out.rateDate = new Date().toISOString().slice(0, 10);
-    out.rateSource = rateInfo.source;
-  }
-  return out;
-}
-
-/** מאחד את שתי צורות הרשומה (Item עם actual/planned, Expense/PrepTask עם amount) לסכום ביתי. */
-function homeAmount(rec) {
-  const raw = (rec.actualAmount !== undefined || rec.plannedAmount !== undefined)
-    ? it.effectiveAmount(rec)
-    : (rec.amount || 0);
-  return rec.rateToILS ? round2(raw * rec.rateToILS) : raw;
-}
-
-/**
- * ממלא רטרואקטיבית rateToILS לפריטים שנוצרו לפני שהמודול הזה נבנה (משימה 5)
- * ולכן נשמרו בלי שער צרוב. פריט עם שער קיים אינו נוגע — "בפועל דורס מתוכנן"
- * חל גם כאן: אחרי שנקבע שער, הוא קפוא לנצח. פריט שהמטבע שלו זהה לביתי, או
- * שאין לו מטבע בכלל, לא זקוק לשער ולכן לא נספר כ"חסר".
- */
-export async function migrateMissingRates(tripId, homeCurrency = 'ILS') {
-  const items = await it.listItems(tripId);
-  const missing = items.filter(i =>
-    (i.actualAmount !== undefined || i.plannedAmount !== undefined) &&
-    i.currency && i.currency !== homeCurrency && !i.rateToILS
-  );
-  let fixed = 0;
-  for (const i of missing) {
-    const rateInfo = await getRate(i.currency, homeCurrency);
-    if (rateInfo?.rate) {
-      await db.put(db.STORES.items, {
-        ...i, rateToILS: rateInfo.rate,
-        rateDate: new Date().toISOString().slice(0, 10),
-        rateSource: rateInfo.source,
-      });
-      fixed++;
-    }
-  }
-  return { checked: missing.length, fixed };
-}
-
-export async function summary(tripId) {
-  const [cats, items, expenses, tasks, trip] = await Promise.all([
+export async function tripTotals(tripId) {
+  const [trip, segs, cats, rows] = await Promise.all([
+    trips.getTrip(tripId),
+    it.listSegments(tripId),
     trips.categories(tripId),
-    it.listItems(tripId),
-    db.all(db.STORES.expenses, tripId),
-    prep.listTasks(tripId),
-    trips.listTrips().then(all => all.find(t => t.id === tripId)),
+    expenses.list(tripId),
   ]);
 
-  const totalPlanned = round2(
-    items.reduce((s, i) => s + (i.plannedAmount ? homeAmount({ ...i, actualAmount: undefined }) : 0), 0) +
-    tasks.reduce((s, t) => s + (t.plannedAmount ? homeAmount(t) : 0), 0)
-  );
-  const totalPaid = round2(
-    items.reduce((s, i) => s + homeAmount(i), 0) +
-    expenses.reduce((s, e) => s + homeAmount(e), 0)
-  );
-  const balance = round2((trip?.totalBudget || 0) - totalPaid);
+  const tripCurrency = (trip?.currency || 'ILS').toUpperCase();
+  const tRate = await tripRateToILS(trip);
 
+  // רשומה שכבר במטבע הטיול מוצגת כמו שהיא. רק מטבע אחר עובר המרה, דרך השקל.
+  const inTrip = rec => {
+    const cur = (rec.currency || tripCurrency).toUpperCase();
+    if (cur === tripCurrency) return round2(Number(rec.amount) || 0);
+    return round2(rates.toILS(rec) / tRate);
+  };
+  const counted = rows.filter(r => r.kind !== 'cashSpend');
+
+  const total = round2(counted.reduce((sum, r) => sum + inTrip(r), 0));
+
+  const bySegment = segs.map(seg => {
+    const amount = round2(counted
+      .filter(r => r.segmentId === seg.id)
+      .reduce((sum, r) => sum + inTrip(r), 0));
+    const allocation = Number(seg.allocation) || 0;
+    return {
+      id: seg.id, city: seg.city, kind: seg.kind,
+      startDate: seg.startDate, endDate: seg.endDate,
+      amount, allocation,
+      remaining: round2(allocation - amount),
+      over: allocation > 0 && amount > allocation,
+    };
+  });
+
+  // המשיכה נספרה כהוצאה, ולכן היא מתפרקת לקטגוריות דרך הוצאות המזומן בפועל.
+  const spent = rows.filter(r => r.kind === 'expense' || r.kind === 'cashSpend');
   const byCategory = cats.map(c => ({
-    id: c.id, name: c.name, color: c.color,
-    amount: round2(
-      items.filter(i => i.categoryId === c.id).reduce((s, i) => s + homeAmount(i), 0) +
-      expenses.filter(e => e.categoryId === c.id).reduce((s, e) => s + homeAmount(e), 0)
-    ),
-  })).filter(c => c.amount > 0);
+    id: c.id, name: c.name, color: c.color, icon: c.icon,
+    amount: round2(spent.filter(r => r.categoryId === c.id).reduce((s, r) => s + inTrip(r), 0)),
+  }));
 
-  const byMethod = ['cash', 'credit', 'transfer'].map(method => ({
-    method,
-    amount: round2(
-      items.filter(i => i.method === method).reduce((s, i) => s + homeAmount(i), 0) +
-      expenses.filter(e => e.method === method).reduce((s, e) => s + homeAmount(e), 0)
-    ),
-  })).filter(m => m.amount > 0);
+  const uncategorised = round2(spent
+    .filter(r => !r.categoryId || !cats.some(c => c.id === r.categoryId))
+    .reduce((s, r) => s + inTrip(r), 0));
+  if (uncategorised) {
+    byCategory.push({ id: 'none', name: NO_CATEGORY, color: '#94A3B8', icon: 'other', amount: uncategorised });
+  }
 
-  const bigTransactions = [
-    ...items.filter(i => homeAmount(i) > 0).map(i => ({ title: i.title, amount: homeAmount(i), date: i.date })),
-    ...expenses.map(e => ({ title: e.note || 'הוצאה', amount: homeAmount(e), date: e.date })),
-  ].sort((a, b) => b.amount - a.amount).slice(0, 10);
+  const balances = await expenses.walletBalances(tripId);
+  let cashInWallet = 0;
+  for (const [currency, balance] of Object.entries(balances)) {
+    if (currency === tripCurrency) { cashInWallet += balance; continue; }
+    cashInWallet += (balance * ((await rates.getRate(currency))?.rate ?? 1)) / tRate;
+  }
+  cashInWallet = round2(cashInWallet);
+  if (cashInWallet) {
+    byCategory.push({ id: 'cash', name: CASH_IN_WALLET, color: '#5A6672', icon: 'wallet', amount: cashInWallet });
+  }
 
-  return { totalPlanned, totalPaid, balance, byCategory, byMethod, bigTransactions };
+  const budget = await trips.budgetSummary(tripId);
+
+  return {
+    currency: tripCurrency,
+    total,
+    balances,
+    cashInWallet,
+    bySegment,
+    byCategory: byCategory.filter(c => c.amount !== 0),
+    ceiling: budget.ceiling,
+    allocated: budget.allocated,
+    unallocated: budget.unallocated,
+    remaining: round2(budget.ceiling - total),
+    overCeiling: budget.ceiling > 0 && total > budget.ceiling,
+  };
+}
+
+/** סך העלויות המתוכננות במסלול, להשוואה מול התקציב. */
+export async function plannedTotal(tripId) {
+  const [trip, items] = await Promise.all([trips.getTrip(tripId), db.all(db.STORES.items, tripId)]);
+  const tRate = await tripRateToILS(trip);
+  return round2(items.reduce((sum, i) =>
+    sum + rates.toILS({ amount: i.plannedAmount || 0, rateToILS: i.rateToILS }) / tRate, 0));
 }

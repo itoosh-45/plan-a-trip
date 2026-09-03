@@ -5,7 +5,7 @@ import * as backup from '../js/backup.js';
 
 async function freshTrip() {
   await db.wipe();
-  return trips.createTrip({ name: 'גיבוי', homeCurrency: 'ILS', totalBudget: 1000 });
+  return trips.createTrip({ name: 'גיבוי', currency: 'ILS', totalBudget: 1000 });
 }
 
 export default async function () {
@@ -63,7 +63,7 @@ export default async function () {
     const restored = await trips.listTrips();
     assertEqual(restored.length, 1);
     assertEqual(restored[0].name, 'גיבוי');
-    assertEqual((await trips.categories(restored[0].id)).length, 9);
+    assertEqual((await trips.categories(restored[0].id)).length, 10);
   });
 
   await s.done();

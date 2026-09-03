@@ -1,5 +1,5 @@
 export const DB_NAME = 'trip-planner';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export const STORES = {
   trips: 'trips',
@@ -23,10 +23,10 @@ const SCHEMA = {
   trips:      { keyPath: 'id',   indexes: [] },
   segments:   { keyPath: 'id',   indexes: ['tripId', 'startDate'] },
   items:      { keyPath: 'id',   indexes: ['tripId', 'date', 'segmentId'] },
-  expenses:   { keyPath: 'id',   indexes: ['tripId', 'date'] },
+  expenses:   { keyPath: 'id',   indexes: ['tripId', 'date', 'segmentId'] },
   wallets:    { keyPath: 'id',   indexes: ['tripId', 'currency'] },
   walletTx:   { keyPath: 'id',   indexes: ['tripId', 'walletId'] },
-  prepTasks:  { keyPath: 'id',   indexes: ['tripId', 'phase', 'catalogId'] },
+  prepTasks:  { keyPath: 'id',   indexes: ['tripId', 'phase', 'catalogId', 'stage'] },
   categories: { keyPath: 'id',   indexes: ['tripId'] },
   budgets:    { keyPath: 'id',   indexes: ['tripId', 'categoryId'] },
   fxRates:    { keyPath: 'pair', indexes: [] },
