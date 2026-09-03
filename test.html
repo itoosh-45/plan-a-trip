@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>בדיקות — תכנון טיול ותקציב</title>
+<style>
+  body { font: 16px/1.6 -apple-system, system-ui, sans-serif; background:#FCFCFC; color:#000; margin:0; padding:16px 16px 80px; }
+  h1 { font-size:20px; }
+  section { background:#fff; border:1px solid rgba(0,0,0,.10); border-radius:16px; padding:16px; margin-top:12px; }
+  h2 { font-size:16px; margin:0 0 8px; }
+  .ok { color:#0E9F6E; }
+  .bad { color:#D92D20; font-weight:700; }
+  .total { margin-top:8px; padding-top:8px; border-top:1px solid rgba(0,0,0,.10); font-weight:700; }
+  #grand { position:fixed; inset-block-end:0; inset-inline:0; padding:12px 16px; background:#fff; border-block-start:1px solid rgba(0,0,0,.10); font-weight:700; }
+</style>
+</head>
+<body>
+<h1>בדיקות — תכנון טיול ותקציב</h1>
+<div id="results"></div>
+<div id="grand">מריץ…</div>
+<script type="module">
+  // כל קובץ בדיקות מייצא default async שמריץ את עצמו.
+  const modules = [
+    './tests/catalog-ids.test.js',
+  ];
+  for (const m of modules) {
+    try {
+      const mod = await import(m);
+      await mod.default();
+    } catch (err) {
+      const box = document.createElement('section');
+      box.innerHTML = '<h2>שגיאת טעינה</h2>';
+      const row = document.createElement('div');
+      row.className = 'bad';
+      row.textContent = `FAIL · ${m} — ${err.message}`;
+      box.appendChild(row);
+      document.getElementById('results').appendChild(box);
+      window.__testTotals = window.__testTotals || { pass: 0, fail: 0 };
+      window.__testTotals.fail++;
+    }
+  }
+  const t = window.__testTotals || { pass: 0, fail: 0 };
+  const g = document.getElementById('grand');
+  g.textContent = `סה"כ: ${t.pass} עברו, ${t.fail} נכשלו`;
+  g.style.color = t.fail ? '#D92D20' : '#0E9F6E';
+</script>
+</body>
+</html>
