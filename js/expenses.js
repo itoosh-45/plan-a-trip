@@ -1,5 +1,6 @@
 import * as db from './db.js';
 import * as it from './itinerary.js';
+import * as money from './money.js';
 
 export const EXPENSE_METHOD = it.PAY_METHOD;
 
@@ -8,9 +9,18 @@ export async function saveExpense(tripId, exp) {
   if (!Number.isFinite(amount) || amount < 0) throw new Error('הסכום חייב להיות מספר אפס ומעלה');
   if (!exp.date) throw new Error('להוצאה חייב להיות תאריך');
   if (exp.method && !it.PAY_METHOD[exp.method]) throw new Error('אמצעי תשלום לא מוכר');
-  return db.put(db.STORES.expenses, {
-    ...exp, id: exp.id, tripId, amount, currency: (exp.currency || 'ILS').toUpperCase(),
-  });
+  const currency = (exp.currency || 'ILS').toUpperCase();
+
+  const payload = { ...exp, id: exp.id, tripId, amount, currency };
+  if (currency !== 'ILS' && !payload.rateToILS) {
+    const rateInfo = await money.getRate(currency);
+    if (rateInfo) {
+      payload.rateToILS = rateInfo.rate;
+      payload.rateDate = new Date().toISOString().slice(0, 10);
+      payload.rateSource = rateInfo.source;
+    }
+  }
+  return db.put(db.STORES.expenses, payload);
 }
 
 export async function removeExpense(tripId, expenseId) {

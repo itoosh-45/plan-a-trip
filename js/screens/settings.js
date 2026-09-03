@@ -1,7 +1,75 @@
 import * as db from '../db.js';
 import * as trips from '../trips.js';
+import * as money from '../money.js';
 import { el, card, sheet, toast, confirmDanger, icon, fmtMoney } from '../ui.js';
 import { refresh, setActiveTrip } from '../app.js';
+
+async function tripCurrencies(tripId) {
+  const [segs, items, expenses] = await Promise.all([
+    db.all(db.STORES.segments, tripId),
+    db.all(db.STORES.items, tripId),
+    db.all(db.STORES.expenses, tripId),
+  ]);
+  const all = [...segs, ...items, ...expenses].map(r => (r.currency || '').toUpperCase()).filter(c => c && c !== 'ILS');
+  return [...new Set(all)].sort();
+}
+
+function fxAge(ts) {
+  const days = Math.floor((Date.now() - Date.parse(ts)) / 86400000);
+  if (days <= 0) return 'עודכן היום';
+  if (days === 1) return 'עודכן אתמול';
+  return `עודכן לפני ${days} ימים`;
+}
+
+function openManualRateSheet(currency) {
+  const rate = el('input', { class: 'field', type: 'number', inputmode: 'decimal', step: '0.0001' });
+  const s = sheet({
+    title: `שער ידני ל-${currency}`,
+    body: el('div', { class: 'field-row' }, [
+      el('label', { class: 'field-label', text: `כמה שקלים ב-1 ${currency}` }), rate,
+    ]),
+    actions: [
+      el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
+      el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
+        try {
+          await money.setManualRate(currency, rate.value);
+          toast('השער נשמר', 'success');
+          s.close();
+          refresh();
+        } catch (err) { toast(err.message, 'error'); }
+      } }),
+    ],
+  });
+}
+
+function fxSection(tripId, currencies, rates) {
+  if (!currencies.length) return null;
+  return section('שערי מטבע', [
+    ...currencies.map(cur => {
+      const r = rates[cur];
+      return el('div', {
+        class: 'hairline', style: 'display:flex; align-items:center; gap:8px; padding-block:10px',
+      }, [
+        el('div', { style: 'flex:1' }, [
+          el('div', { style: 'font-weight:600', text: cur }),
+          el('div', { class: 'dim', style: 'font-size:13px',
+            text: r ? `1 ${cur} = ${r.rate} ₪ · ${fxAge(r.ts)} (${r.source})${r.stale ? ' · ישן' : ''}` : 'אין שער שמור' }),
+        ]),
+        el('button', { class: 'icon-btn', 'aria-label': `שער ידני ל-${cur}`, html: icon('edit'), onClick: () => openManualRateSheet(cur) }),
+      ]);
+    }),
+    el('button', {
+      class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
+      html: `${icon('refresh')}<span>רענון שערים אונליין</span>`,
+      onClick: async () => {
+        const res = await money.refreshRates(currencies);
+        const ok = Object.values(res).filter(r => r.ok).length;
+        toast(ok ? `עודכנו ${ok} שערים` : 'לא ניתן היה לעדכן שערים כרגע', ok ? 'success' : 'warning');
+        refresh();
+      },
+    }),
+  ]);
+}
 
 function section(title, children) {
   return card([
@@ -129,6 +197,12 @@ export async function mount(host, tripId) {
   ]));
 
   if (trip) {
+    const currencies = await tripCurrencies(trip.id);
+    const rates = {};
+    for (const cur of currencies) rates[cur] = await money.getRate(cur);
+    const fx = fxSection(trip.id, currencies, rates);
+    if (fx) host.append(fx);
+
     const cats = await trips.categories(trip.id);
     host.append(section('קטגוריות', [
       ...cats.map(c => el('div', {
