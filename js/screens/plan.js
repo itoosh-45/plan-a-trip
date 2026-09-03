@@ -1,5 +1,6 @@
 import * as it from '../itinerary.js';
 import * as trips from '../trips.js';
+import * as money from '../money.js';
 import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtDateRange, fmtDate, nightsBetween } from '../ui.js';
 import { refresh } from '../app.js';
 import { mountPrepCard } from './prep.js';
@@ -133,7 +134,8 @@ async function openItemSheet(tripId, date, segmentId, existing) {
         : el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
         try {
-          await it.saveItem(tripId, {
+          const cur = (currency.value || '').toUpperCase() || undefined;
+          const payload = {
             id: existing?.id,
             segmentId: existing?.segmentId ?? segmentId ?? null,
             type: type.value,
@@ -146,10 +148,23 @@ async function openItemSheet(tripId, date, segmentId, existing) {
             categoryId: category.value || undefined,
             plannedAmount: num(planned),
             actualAmount: num(actual),
-            currency: (currency.value || '').toUpperCase() || undefined,
+            currency: cur,
             payStatus: payStatus.value,
             method: method.value || undefined,
-          });
+            rateToILS: existing?.rateToILS,
+            rateDate: existing?.rateDate,
+            rateSource: existing?.rateSource,
+          };
+          // צריבת שער ברגע ההזנה — רק אם עוד אין שער קפוא ויש שער שמור למטבע.
+          if (cur && cur !== 'ILS' && !payload.rateToILS) {
+            const rateInfo = await money.getRate(cur);
+            if (rateInfo) {
+              payload.rateToILS = rateInfo.rate;
+              payload.rateDate = new Date().toISOString().slice(0, 10);
+              payload.rateSource = rateInfo.source;
+            }
+          }
+          await it.saveItem(tripId, payload);
           toast('הפריט נשמר', 'success');
           s.close();
           refresh();

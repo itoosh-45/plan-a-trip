@@ -43,16 +43,19 @@
 <div id="toasts"></div>
 <nav id="nav" aria-label="ניווט ראשי"></nav>
 
+<script src="./vendor/chart.umd.js"></script>
 <script type="module">
   import { boot, registerScreen } from './js/app.js';
   import { mount as planMount } from './js/screens/plan.js';
   import { mount as budgetMount } from './js/screens/budget.js';
   import { mount as expensesMount } from './js/screens/expenses.js';
+  import { mount as summaryMount } from './js/screens/summary.js';
   import { mount as settingsMount } from './js/screens/settings.js';
 
   registerScreen('plan', planMount);
   registerScreen('budget', budgetMount);
   registerScreen('expenses', expensesMount);
+  registerScreen('summary', summaryMount);
   registerScreen('settings', settingsMount);
   await boot();
 </script>
