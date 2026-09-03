@@ -10,32 +10,6 @@
 <title>תכנון טיול ותקציב</title>
 <link rel="stylesheet" href="./css/tokens.css">
 <link rel="stylesheet" href="./css/app.css">
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: {
-          bg: 'var(--color-bg)',
-          surface: 'var(--color-surface)',
-          'surface-2': 'var(--color-surface-2)',
-          input: 'var(--color-input)',
-          text: 'var(--color-text)',
-          'text-dim': 'var(--color-text-dim)',
-          accent: 'var(--color-accent)',
-          highlight: 'var(--color-highlight)',
-          line: 'var(--color-border)',
-          hairline: 'var(--color-hairline)',
-          danger: 'var(--color-danger)',
-          success: 'var(--color-success)',
-          warning: 'var(--color-warning)',
-        },
-        borderRadius: { card: 'var(--radius-card)', xl: 'var(--radius-control)' },
-        boxShadow: { stamp: 'var(--shadow-stamp)' },
-      },
-    },
-  };
-</script>
 </head>
 <body>
 <header id="topbar"></header>
@@ -47,14 +21,14 @@
 <script src="./vendor/xlsx.full.min.js"></script>
 <script type="module">
   import { boot, registerScreen } from './js/app.js';
+  import { mount as prepMount } from './js/screens/prep.js';
   import { mount as planMount } from './js/screens/plan.js';
-  import { mount as budgetMount } from './js/screens/budget.js';
   import { mount as expensesMount } from './js/screens/expenses.js';
   import { mount as summaryMount } from './js/screens/summary.js';
   import { mount as settingsMount } from './js/screens/settings.js';
 
+  registerScreen('prep', prepMount);
   registerScreen('plan', planMount);
-  registerScreen('budget', budgetMount);
   registerScreen('expenses', expensesMount);
   registerScreen('summary', summaryMount);
   registerScreen('settings', settingsMount);

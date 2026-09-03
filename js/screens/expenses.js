@@ -1,41 +1,97 @@
-import * as db from '../db.js';
 import * as trips from '../trips.js';
+import * as it from '../itinerary.js';
 import * as expenses from '../expenses.js';
-import * as wallet from '../wallet.js';
-import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtDate } from '../ui.js';
+import * as money from '../money.js';
+import * as cur from '../currencies.js';
+import {
+  el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote, fmtMoney, fmtDate,
+} from '../ui.js';
 import { refresh } from '../app.js';
 
-let categoryFilter = '';
+let segmentFilter = '';
+let walletOpen = false;
 
-function openExpenseSheet(tripId, cats) {
-  const amount = el('input', { class: 'field', type: 'number', inputmode: 'decimal', step: '0.01' });
-  const currency = el('input', { class: 'field', type: 'text', maxlength: '3', style: 'text-transform:uppercase', value: 'ILS' });
-  const date = el('input', { class: 'field', type: 'date', value: new Date().toISOString().slice(0, 10) });
+const KIND_LABEL = expenses.KINDS;
+
+function catOf(cats, id) {
+  return cats.find(c => c.id === id) || { name: 'ללא קטגוריה', color: '#94A3B8', icon: 'other' };
+}
+
+// ---------- טופס רשומה ----------
+
+async function openExpenseSheet(trip, existing, kind = 'expense') {
+  const [cats, segs, currencies] = await Promise.all([
+    trips.categories(trip.id), it.listSegments(trip.id), cur.listActive(),
+  ]);
+  const defaultSegment = existing?.segmentId || await it.defaultSegmentId(trip.id);
+
+  const amount = amountField({
+    amount: existing?.amount,
+    currency: existing?.currency || trip.currency,
+    currencies,
+  });
+  const segment = el('select', { class: 'field' }, segs.map(s =>
+    el('option', { value: s.id, selected: s.id === defaultSegment, text: s.city })));
   const category = el('select', { class: 'field' }, [
     el('option', { value: '', text: 'ללא קטגוריה' }),
-    ...cats.map(c => el('option', { value: c.id, text: c.name })),
+    ...cats.map(c => el('option', { value: c.id, selected: existing?.categoryId === c.id, text: c.name })),
   ]);
-  const method = el('select', { class: 'field' }, Object.entries(expenses.EXPENSE_METHOD).map(([k, v]) =>
-    el('option', { value: k, selected: k === 'cash', text: v })));
-  const note = el('input', { class: 'field', type: 'text', placeholder: 'הערה חופשית' });
+  const note = el('input', {
+    class: 'field', type: 'text', value: existing?.note || '', placeholder: 'פירוט קצר',
+  });
 
-  const row = (label, node) => el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: label }), node]);
+  const row = (label, node) => el('div', { class: 'field-row' }, [
+    el('label', { class: 'field-label', text: label }), node,
+  ]);
+
+  const titles = {
+    expense: existing ? 'עריכת הוצאה' : 'הוצאה חדשה',
+    withdraw: 'משיכת מזומן מכספומט',
+    cashSpend: 'הוצאה במזומן',
+  };
+  const hints = {
+    expense: 'נספרת במלואה בסך ההוצאות של הטיול.',
+    withdraw: 'המשיכה היא ההוצאה: היא נספרת במלואה ונכנסת לארנק המזומן.',
+    cashSpend: 'מקטינה את יתרת הארנק ואינה נספרת שוב — הכסף כבר נספר במשיכה.',
+  };
+  const activeKind = existing?.kind || kind;
 
   const s = sheet({
-    title: 'הוצאה חדשה',
+    title: titles[activeKind],
     body: el('div', {}, [
-      row('סכום', amount), row('מטבע', currency), row('תאריך', date),
-      row('קטגוריה', category), row('אמצעי תשלום', method), row('הערה', note),
+      row('סכום', amount.node),
+      row('יעד או מקטע', segment),
+      activeKind === 'withdraw' ? null : row('קטגוריה', category),
+      row('פירוט', note),
+      el('p', { class: 'dim', style: 'font-size:13px', text: hints[activeKind] }),
     ]),
     actions: [
-      el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
+      existing
+        ? el('button', { class: 'btn btn-danger btn-block', text: 'מחק', onClick: async () => {
+            const ok = await confirmDanger({
+              title: 'למחוק את הרשומה?', body: existing.note || KIND_LABEL[existing.kind], confirmLabel: 'מחק',
+            });
+            if (!ok) return;
+            await expenses.removeExpense(trip.id, existing.id);
+            toast('נמחק', 'success');
+            s.close();
+            refresh();
+          } })
+        : el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
         try {
-          await expenses.saveExpense(tripId, {
-            amount: amount.value, currency: currency.value, date: date.value,
-            categoryId: category.value || undefined, method: method.value, note: note.value,
+          const value = amount.read();
+          const saved = await expenses.saveExpense(trip.id, {
+            ...existing,
+            kind: activeKind,
+            amount: value.amount ?? 0,
+            currency: value.currency,
+            segmentId: segment.value,
+            categoryId: activeKind === 'withdraw' ? undefined : (category.value || undefined),
+            note: note.value || undefined,
           });
-          toast('ההוצאה נשמרה', 'success');
+          if (saved.overdrawn) toast('שימו לב: ההוצאה גדולה מיתרת המזומן בארנק', 'warning');
+          else toast('נשמר', 'success');
           s.close();
           refresh();
         } catch (err) { toast(err.message, 'error'); }
@@ -44,130 +100,164 @@ function openExpenseSheet(tripId, cats) {
   });
 }
 
-function openWalletSheet(tripId, active) {
-  if (!active) {
-    const currency = el('input', { class: 'field', type: 'text', maxlength: '3', style: 'text-transform:uppercase', value: 'ILS' });
-    const s = sheet({
-      title: 'פתיחת ארנק מזומן',
-      body: el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: 'מטבע' }), currency]),
-      actions: [
-        el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
-        el('button', { class: 'btn btn-primary btn-block', text: 'פתח ארנק', onClick: async () => {
-          try {
-            await wallet.open(tripId, currency.value);
-            toast('הארנק נפתח', 'success');
-            s.close();
-            refresh();
-          } catch (err) { toast(err.message, 'error'); }
-        } }),
-      ],
-    });
-    return;
+// ---------- ווידג׳ט ארנק ----------
+
+function walletCard(trip, balances, cashRows, cats, segs) {
+  const codes = Object.keys(balances);
+  const body = [
+    el('div', { style: 'display:flex; align-items:center; gap:8px' }, [
+      el('span', { class: 'cat-icon', html: icon('wallet'),
+        style: 'background:var(--color-surface-2); color:var(--color-accent)' }),
+      el('div', { class: 'grow' }, [
+        el('div', { style: 'font-weight:700', text: 'ארנק מזומן' }),
+        el('div', { class: 'sub', text: codes.length ? 'יתרה לכל מטבע' : 'עדיין לא נמשך מזומן' }),
+      ]),
+      el('button', {
+        class: 'btn btn-primary', 'aria-label': 'הוצאה במזומן', html: icon('plus'),
+        onClick: () => openExpenseSheet(trip, null, 'cashSpend'),
+      }),
+    ]),
+  ];
+
+  for (const code of codes) {
+    body.push(el('div', { class: 'row' }, [
+      el('span', { class: 'grow', text: code }),
+      el('span', {
+        class: 'num', style: `font-weight:700; ${balances[code] < 0 ? 'color:var(--color-danger)' : ''}`,
+        text: fmtMoney(balances[code], code),
+      }),
+    ]));
   }
 
-  const amount = el('input', { class: 'field', type: 'number', inputmode: 'decimal', step: '0.01' });
-  const closeAmount = el('input', { class: 'field', type: 'number', inputmode: 'decimal', step: '0.01' });
-  const newCurrency = el('input', { class: 'field', type: 'text', maxlength: '3', style: 'text-transform:uppercase' });
+  body.push(el('div', { style: 'display:flex; gap:8px; margin-block-start:12px' }, [
+    el('button', {
+      class: 'btn btn-secondary btn-block', html: `${icon('cash')}<span>משיכת מזומן</span>`,
+      onClick: () => openExpenseSheet(trip, null, 'withdraw'),
+    }),
+    cashRows.length
+      ? el('button', {
+          class: 'btn btn-tertiary', text: walletOpen ? 'הסתר פירוט' : `פירוט (${cashRows.length})`,
+          onClick: () => { walletOpen = !walletOpen; refresh(); },
+        })
+      : null,
+  ]));
 
-  const s = sheet({
-    title: `ארנק ${active.currency}`,
-    body: el('div', {}, [
-      el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: `הפקדה/הוצאה (${active.currency})` }), amount]),
-      el('div', { style: 'display:flex; gap:8px; margin-block-start:8px' }, [
-        el('button', { class: 'btn btn-secondary btn-block', text: 'הפקדתי מזומן', onClick: async () => {
-          try { await wallet.withdraw(tripId, active.id, amount.value); toast('נוסף לארנק', 'success'); s.close(); refresh(); }
-          catch (err) { toast(err.message, 'error'); }
-        } }),
-        el('button', { class: 'btn btn-tertiary btn-block', text: 'הוצאתי מזומן', onClick: async () => {
-          try { await wallet.spend(tripId, active.id, amount.value); toast('נרשם', 'success'); s.close(); refresh(); }
-          catch (err) { toast(err.message, 'error'); }
-        } }),
-      ]),
-      el('div', { class: 'hairline', style: 'margin-block-start:16px; padding-block-start:12px' }, [
-        el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'סגירת ארנק (מעבר מדינה)' }),
-        el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: 'יתרת סגירה בפועל' }), closeAmount]),
-        el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: 'מטבע הארנק הבא' }), newCurrency]),
-        el('button', { class: 'btn btn-primary btn-block', style: 'margin-block-start:8px', text: 'סגור ופתח ארנק חדש', onClick: async () => {
-          try {
-            await wallet.closeAndOpen(tripId, closeAmount.value, newCurrency.value);
-            toast('הארנק נסגר ונפתח ארנק חדש', 'success');
-            s.close();
-            refresh();
-          } catch (err) { toast(err.message, 'error'); }
-        } }),
-      ]),
-    ]),
-    actions: [el('button', { class: 'btn btn-tertiary btn-block', text: 'סגירה', onClick: () => s.close() })],
-  });
+  if (walletOpen) {
+    for (const r of cashRows) {
+      const c = catOf(cats, r.categoryId);
+      body.push(el('button', {
+        class: 'row', style: 'width:100%; background:none; border:0; text-align:start; cursor:pointer; font:inherit; color:inherit',
+        onClick: () => openExpenseSheet(trip, r),
+      }, [
+        el('span', { class: 'cat-icon', html: icon(c.icon || 'other'),
+          style: `background:color-mix(in srgb, ${c.color} 14%, transparent); color:${c.color}` }),
+        el('span', { class: 'grow' }, [
+          el('span', { style: 'display:block', text: r.note || 'הוצאה במזומן' }),
+          el('span', { class: 'sub',
+            text: `${c.name} · ${segs.find(sg => sg.id === r.segmentId)?.city || 'כללי'} · ${fmtDate(r.date)}` }),
+        ]),
+        el('span', { class: 'num', text: `−${fmtMoney(r.amount, r.currency)}` }),
+      ]));
+    }
+  }
+
+  return card(body, 'card-gap');
 }
+
+// ---------- המסך ----------
 
 export async function mount(host, tripId) {
   if (!tripId) {
-    host.append(card([el('div', { class: 'dim', text: 'צרו טיול במסך ההגדרות כדי לעקוב אחרי הוצאות.' })], 'card-gap'));
+    host.append(card([
+      el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'אין עדיין טיול' }),
+      el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי לעקוב אחרי הוצאות.' }),
+    ], 'card-gap'));
     return;
   }
 
-  const [cats, active] = await Promise.all([trips.categories(tripId), wallet.activeWallet(tripId)]);
-  const balance = active ? await wallet.balance(tripId, active.id) : 0;
+  const [trip, cats, segs, rows, totals] = await Promise.all([
+    trips.getTrip(tripId),
+    trips.categories(tripId),
+    it.listSegments(tripId),
+    expenses.list(tripId),
+    money.tripTotals(tripId),
+  ]);
+
+  const cashRows = rows.filter(r => r.kind === 'cashSpend');
+  host.append(walletCard(trip, totals.balances, cashRows, cats, segs));
 
   host.append(card([
-    el('div', { style: 'display:flex; justify-content:space-between; align-items:center' }, [
-      el('div', {}, [
-        el('div', { style: 'font-weight:700', text: 'ארנק מזומן' }),
-        el('div', { class: 'dim', style: 'font-size:13px',
-          text: active ? `יתרה ב-${active.currency}` : 'אין ארנק פתוח' }),
-      ]),
-      active ? el('span', { class: 'num', style: 'font-size:20px; font-weight:700', text: fmtMoney(balance, active.currency) }) : null,
+    el('div', { style: 'display:flex; align-items:baseline; justify-content:space-between' }, [
+      el('span', { class: 'dim', text: `סה"כ הוצאות (${rows.filter(r => r.kind !== 'cashSpend').length})` }),
+      el('span', { class: 'num', style: 'font-size:24px; font-weight:700',
+        text: fmtMoney(totals.total, trip.currency) }),
     ]),
-    el('button', {
-      class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
-      html: `${icon('cash')}<span>${active ? 'ניהול ארנק' : 'פתיחת ארנק'}</span>`,
-      onClick: () => openWalletSheet(tripId, active),
-    }),
   ], 'card-gap'));
 
-  const chips = el('div', { style: 'display:flex; gap:8px; overflow-x:auto; padding-block:4px' }, [
+  host.append(el('div', { class: 'card-gap', style: 'display:flex; gap:8px; overflow-x:auto; padding-block:4px' }, [
     el('button', {
-      class: 'chip', 'aria-pressed': String(!categoryFilter), text: 'הכול',
-      onClick: () => { categoryFilter = ''; refresh(); },
+      class: 'chip', 'aria-pressed': String(!segmentFilter), text: 'כל היעדים',
+      onClick: () => { segmentFilter = ''; refresh(); },
     }),
-    ...cats.map(c => el('button', {
-      class: 'chip', 'aria-pressed': String(categoryFilter === c.id), text: c.name,
-      onClick: () => { categoryFilter = categoryFilter === c.id ? '' : c.id; refresh(); },
+    ...segs.map(sg => el('button', {
+      class: 'chip', 'aria-pressed': String(segmentFilter === sg.id), text: sg.city,
+      onClick: () => { segmentFilter = segmentFilter === sg.id ? '' : sg.id; refresh(); },
     })),
-  ]);
-  host.append(card([chips], 'card-gap'));
+  ]));
 
-  const rows = await expenses.list(tripId, categoryFilter ? { categoryId: categoryFilter } : {});
-  if (!rows.length) {
-    host.append(card([el('div', { class: 'dim', text: 'אין הוצאות עדיין.' })], 'card-gap'));
-  } else {
-    host.append(card(rows.map(r => el('div', {
-      class: 'hairline', style: 'display:flex; align-items:center; gap:8px; padding-block:10px',
-    }, [
-      el('div', { style: 'flex:1' }, [
-        el('div', { text: r.title }),
-        el('div', { class: 'dim', style: 'font-size:13px', text: fmtDate(r.date) }),
+  const visible = segs.filter(sg => !segmentFilter || sg.id === segmentFilter);
+  let shown = 0;
+
+  for (const seg of visible) {
+    const group = rows.filter(r => r.segmentId === seg.id && r.kind !== 'cashSpend');
+    if (!group.length) continue;
+    shown += group.length;
+    const stat = totals.bySegment.find(x => x.id === seg.id) || { amount: 0, allocation: 0, over: false };
+
+    host.append(card([
+      el('div', { style: 'display:flex; align-items:center; gap:8px; margin-block-end:4px' }, [
+        el('span', { class: 'grow', style: 'font-weight:700; font-size:16px', text: seg.city }),
+        el('span', { class: 'num', style: 'font-weight:700', text: fmtMoney(stat.amount, trip.currency) }),
       ]),
-      el('span', { class: 'num', style: 'font-weight:700', text: fmtMoney(r.amount, r.currency) }),
-      r.source === 'expense'
-        ? el('button', {
-            class: 'icon-btn', style: 'color:var(--color-danger)', 'aria-label': `מחק ${r.title}`, html: icon('trash'),
-            onClick: async () => {
-              const ok = await confirmDanger({ title: 'למחוק את ההוצאה?', body: r.title, confirmLabel: 'מחק' });
-              if (!ok) return;
-              await expenses.removeExpense(tripId, r.id);
-              toast('ההוצאה נמחקה', 'success');
-              refresh();
-            },
-          })
+      stat.allocation
+        ? el('div', { class: 'sub' }, [
+            el('span', { class: `pill ${stat.over ? 'over' : 'ok'}`,
+              text: stat.over
+                ? `חריגה של ${fmtMoney(-stat.remaining, trip.currency)}`
+                : `נותרו ${fmtMoney(stat.remaining, trip.currency)}` }),
+          ])
         : null,
-    ])), 'card-gap'));
+      ...group.map(r => {
+        const c = catOf(cats, r.categoryId);
+        return el('button', {
+          class: 'row', style: 'width:100%; background:none; border:0; text-align:start; cursor:pointer; font:inherit; color:inherit',
+          onClick: () => openExpenseSheet(trip, r),
+        }, [
+          el('span', {
+            class: 'cat-icon', html: icon(r.kind === 'withdraw' ? 'cash' : (c.icon || 'other')),
+            style: `background:color-mix(in srgb, ${c.color} 14%, transparent); color:${c.color}`,
+          }),
+          el('span', { class: 'grow' }, [
+            el('span', { style: 'display:block', text: r.note || KIND_LABEL[r.kind] }),
+            el('span', { class: 'sub',
+              text: `${r.kind === 'withdraw' ? KIND_LABEL.withdraw : c.name} · ${fmtDate(r.date)}` }),
+          ]),
+          el('span', { style: 'text-align:end' }, [
+            el('div', { class: 'num', style: 'font-weight:700', text: fmtMoney(r.amount, r.currency) }),
+            ilsNote(r.amount, r.currency, r.rateToILS),
+          ]),
+        ]);
+      }),
+    ], 'card-gap'));
+  }
+
+  if (!shown) {
+    host.append(card([el('div', { class: 'dim', text: 'אין עדיין הוצאות להצגה.' })], 'card-gap'));
   }
 
   host.append(el('button', {
     class: 'btn btn-primary fab', 'aria-label': 'הוסף הוצאה',
     html: `${icon('plus')}<span>הוצאה</span>`,
-    onClick: () => openExpenseSheet(tripId, cats),
+    onClick: () => openExpenseSheet(trip, null, 'expense'),
   }));
 }

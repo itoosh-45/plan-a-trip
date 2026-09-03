@@ -1,16 +1,16 @@
 import { el, icon, toast, fmtDateRange } from './ui.js';
-import { listTrips, tripDates, TRIP_STATUS } from './trips.js';
+import { listTrips, tripDates } from './trips.js';
+import * as migrate from './migrate.js';
 
 const SCREENS = [
-  { key: 'plan',     label: 'תכנון',   iconName: 'plan' },
-  { key: 'budget',   label: 'תקציב',   iconName: 'budget' },
-  { key: 'expenses', label: 'הוצאות',  iconName: 'expenses' },
-  { key: 'summary',  label: 'סיכום',   iconName: 'summary' },
-  { key: 'settings', label: 'הגדרות',  iconName: 'settings' },
+  { key: 'prep',     label: 'רשימת הכנה', iconName: 'check' },
+  { key: 'plan',     label: 'תכנון',      iconName: 'plan' },
+  { key: 'expenses', label: 'הוצאות',     iconName: 'expenses' },
+  { key: 'summary',  label: 'סיכום',      iconName: 'summary' },
 ];
 
 const mounts = new Map();
-let current = 'plan';
+let current = 'prep';
 let activeTrip = null;
 
 export function registerScreen(key, mountFn) { mounts.set(key, mountFn); }
@@ -33,11 +33,18 @@ export function navigate(key) {
 async function buildTopbar() {
   const all = await listTrips();
 
+  const settingsBtn = el('button', {
+    class: 'icon-btn',
+    'aria-label': 'הגדרות',
+    html: icon('settings'),
+    onClick: () => navigate('settings'),
+  });
+
   if (!all.length) {
     activeTrip = null;
-    return el('div', { class: 'card', style: 'margin:12px 16px' }, [
-      el('div', { style: 'font-weight:700', text: 'אין עדיין טיול' }),
-      el('div', { class: 'dim', style: 'margin-block-start:4px', text: 'צרו טיול ראשון במסך ההגדרות.' }),
+    return el('div', { class: 'topbar-row' }, [
+      el('div', { class: 'grow', style: 'font-weight:700', text: 'תכנון טיול ותקציב' }),
+      settingsBtn,
     ]);
   }
 
@@ -46,30 +53,25 @@ async function buildTopbar() {
     try { localStorage.setItem('activeTripId', activeTrip); } catch { /* מצב פרטי */ }
   }
 
-  const trip = all.find(t => t.id === activeTrip);
-  const { startDate, endDate } = await tripDates(trip.id);
+  const { startDate, endDate } = await tripDates(activeTrip);
   const select = el('select', {
     class: 'field',
     'aria-label': 'בחירת הטיול הפעיל',
-    style: 'font-weight:700',
     onChange: e => setActiveTrip(e.target.value),
   }, all.map(t => el('option', { value: t.id, selected: t.id === activeTrip, text: t.name })));
 
-  return el('div', { style: 'padding:12px 16px 0' }, [
-    select,
-    el('div', {
-      class: 'dim',
-      style: 'margin-block-start:6px; font-size:14px',
-      text: startDate
-        ? `${TRIP_STATUS[trip.status]} · ${fmtDateRange(startDate, endDate)}`
-        : `${TRIP_STATUS[trip.status]} · טרם הוגדרו מקטעים`,
-    }),
+  return el('div', {}, [
+    el('div', { class: 'topbar-row' }, [select, settingsBtn]),
+    startDate
+      ? el('div', { class: 'dim', style: 'margin-block-start:6px; font-size:14px',
+          text: fmtDateRange(startDate, endDate) })
+      : el('div', { class: 'dim', style: 'margin-block-start:6px; font-size:14px',
+          text: 'טרם הוגדרו תאריכים לטיול' }),
   ]);
 }
 
-// יצירת טיול משדרת כמה אירועי data:changed ברצף (put הטיול + bulkPut הקטגוריות),
-// ולכל אחד יש מאזין שקורא ל-refresh. בלי שמירת "רק הרינדור האחרון קובע", שני
-// רינדורים חופפים היו שניהם נספחים ל-host ומכפילים את התוכן על המסך.
+// יצירת טיול משדרת כמה אירועי data:changed ברצף, ולכל אחד מאזין שקורא ל-refresh.
+// בלי "רק הרינדור האחרון קובע", שני רינדורים חופפים היו מכפילים את התוכן על המסך.
 let renderId = 0;
 
 export async function refresh() {
@@ -112,6 +114,8 @@ function buildNav() {
 export async function boot() {
   buildNav();
   try { activeTrip = localStorage.getItem('activeTripId') || null; } catch { activeTrip = null; }
+  const report = await migrate.run();
+  if (!report.skipped && report.trips) toast('הנתונים הקיימים הותאמו למבנה החדש', 'success');
   document.addEventListener('data:changed', () => refresh());
   window.addEventListener('online',  () => toast('חזרנו לרשת', 'success'));
   window.addEventListener('offline', () => toast('אין רשת. האפליקציה ממשיכה לעבוד.', 'warning'));

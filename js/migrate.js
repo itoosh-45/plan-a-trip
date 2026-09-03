@@ -1,10 +1,8 @@
 import * as db from './db.js';
 import * as trips from './trips.js';
+import { STAGE_BY_PHASE, URGENCY_BY_PRIORITY } from './prep.js';
 
 export const SCHEMA_VERSION = 2;
-
-const URGENCY_BY_PRIORITY = { 'חובה': 'critical', 'רלוונטי': 'important', 'נוחות': 'normal' };
-const STAGE_BY_PHASE = { 'לפני': 'before', 'בדרך': 'before', 'בשהות': 'during', 'בחזרה': 'after' };
 
 const segmentFor = (segs, date, generalId) =>
   segs.find(s => s.kind !== 'general' && s.startDate <= date && date <= (s.endDate || s.startDate))?.id
