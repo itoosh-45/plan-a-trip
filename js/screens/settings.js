@@ -1,8 +1,73 @@
 import * as db from '../db.js';
 import * as trips from '../trips.js';
 import * as money from '../money.js';
+import * as excel from '../excel.js';
 import { el, card, sheet, toast, confirmDanger, icon, fmtMoney } from '../ui.js';
 import { refresh, setActiveTrip } from '../app.js';
+
+async function exportExcel(trip) {
+  try {
+    const blob = await excel.build(trip.id);
+    const filename = `${trip.name.replace(/[\\/:*?"<>|]/g, '-')}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: filename });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('הקובץ יוצא', 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function openImportPreview(trip, parsed) {
+  const s = sheet({
+    title: 'אישור ייבוא',
+    body: el('div', {}, [
+      el('p', { class: 'dim', style: 'margin:0 0 12px',
+        text: `הקובץ יחליף את המסלול, התקציב וההוצאות של "${trip.name}" בלבד. אין ייבוא ← עד לאישור.` }),
+      el('div', { style: 'display:flex; flex-direction:column; gap:4px' }, [
+        el('div', { text: `מקטעים: ${parsed.preview.segments}` }),
+        el('div', { text: `פריטי מסלול: ${parsed.preview.items}` }),
+        el('div', { text: `שורות תקציב: ${parsed.preview.budgets}` }),
+        el('div', { text: `הוצאות: ${parsed.preview.expenses}` }),
+      ]),
+    ]),
+    actions: [
+      el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
+      el('button', { class: 'btn btn-primary btn-block', text: 'אשר ויבא', onClick: async () => {
+        try {
+          await excel.apply(trip.id, parsed);
+          toast('הייבוא הושלם', 'success');
+          s.close();
+          refresh();
+        } catch (err) { toast(err.message, 'error'); }
+      } }),
+    ],
+  });
+}
+
+function importExcel(trip) {
+  const input = el('input', { type: 'file', accept: '.xlsx', style: 'display:none' });
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    input.remove();
+    if (!file) return;
+    const parsed = await excel.parse(file);
+    if (!parsed.ok) {
+      const s = sheet({
+        title: 'הקובץ לא תקין',
+        body: el('div', {}, parsed.errors.map(e => el('div', { class: 'toast error', style: 'margin-block-end:8px', text: e }))),
+        actions: [el('button', { class: 'btn btn-tertiary btn-block', text: 'סגירה', onClick: () => s.close() })],
+      });
+      return;
+    }
+    openImportPreview(trip, parsed);
+  });
+  document.body.append(input);
+  input.click();
+}
 
 async function tripCurrencies(tripId) {
   const [segs, items, expenses] = await Promise.all([
@@ -197,6 +262,14 @@ export async function mount(host, tripId) {
   ]));
 
   if (trip) {
+    host.append(section('ייצוא וייבוא אקסל', [
+      el('p', { class: 'dim', style: 'margin:0 0 12px', text: 'קובץ מעוצב עם 4 גיליונות: סיכום, מסלול, תקציב, הוצאות.' }),
+      el('div', { style: 'display:flex; gap:8px' }, [
+        el('button', { class: 'btn btn-secondary btn-block', html: `${icon('download')}<span>ייצוא</span>`, onClick: () => exportExcel(trip) }),
+        el('button', { class: 'btn btn-tertiary btn-block', html: `${icon('share')}<span>ייבוא</span>`, onClick: () => importExcel(trip) }),
+      ]),
+    ]));
+
     const currencies = await tripCurrencies(trip.id);
     const rates = {};
     for (const cur of currencies) rates[cur] = await money.getRate(cur);

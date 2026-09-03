@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>בדיקות — תכנון טיול ותקציב</title>
 <link rel="stylesheet" href="./css/tokens.css">
+<script src="./vendor/xlsx.full.min.js"></script>
 <style>
   body { font: 16px/1.6 -apple-system, system-ui, sans-serif; background:#FCFCFC; color:#000; margin:0; padding:16px 16px 80px; }
   h1 { font-size:20px; }
@@ -33,6 +34,7 @@
     './tests/budget.test.js',
     './tests/wallet.test.js',
     './tests/money.test.js',
+    './tests/excel.test.js',
   ];
   for (const m of modules) {
     try {
