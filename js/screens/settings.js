@@ -2,8 +2,66 @@ import * as db from '../db.js';
 import * as trips from '../trips.js';
 import * as money from '../money.js';
 import * as excel from '../excel.js';
+import * as backup from '../backup.js';
 import { el, card, sheet, toast, confirmDanger, icon, fmtMoney } from '../ui.js';
 import { refresh, setActiveTrip } from '../app.js';
+
+async function runBackup() {
+  try {
+    const res = await backup.toFile();
+    if (res.method === 'share') toast('הגיבוי נשלח לשיתוף', 'success');
+    else if (res.method === 'download') toast('קובץ הגיבוי הורד', 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function openRestorePreview(parsed) {
+  const rows = Object.entries(parsed.preview).filter(([, n]) => n > 0);
+  const s = sheet({
+    title: 'שחזור מגיבוי',
+    body: el('div', {}, [
+      el('p', { style: 'color:var(--color-danger); font-weight:700; margin:0 0 12px',
+        text: 'השחזור מוחק ומחליף את כל הנתונים הקיימים במכשיר הזה — כל הטיולים.' }),
+      rows.length
+        ? el('div', { style: 'display:flex; flex-direction:column; gap:4px' },
+            rows.map(([store, n]) => el('div', { text: `${store}: ${n}` })))
+        : el('div', { class: 'dim', text: 'קובץ הגיבוי ריק.' }),
+    ]),
+    actions: [
+      el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
+      el('button', { class: 'btn btn-danger btn-block', text: 'שחזר והחלף הכול', onClick: async () => {
+        const ok = await confirmDanger({
+          title: 'אישור סופי לשחזור',
+          body: 'כל הנתונים הנוכחיים יימחקו ויוחלפו בתוכן הגיבוי. אין דרך לבטל.',
+          confirmLabel: 'שחזר לצמיתות',
+        });
+        if (!ok) return;
+        try {
+          await backup.restore(parsed.payload);
+          toast('השחזור הושלם', 'success');
+          s.close();
+          setActiveTrip(null);
+          refresh();
+        } catch (err) { toast(err.message, 'error'); }
+      } }),
+    ],
+  });
+}
+
+function runRestore() {
+  const input = el('input', { type: 'file', accept: '.json,application/json', style: 'display:none' });
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    input.remove();
+    if (!file) return;
+    const parsed = await backup.parseBackup(file);
+    if (!parsed.ok) { toast(parsed.error, 'error'); return; }
+    openRestorePreview(parsed);
+  });
+  document.body.append(input);
+  input.click();
+}
 
 async function exportExcel(trip) {
   try {
@@ -259,6 +317,15 @@ export async function mount(host, tripId) {
       class: 'btn btn-primary btn-block', style: 'margin-block-start:12px',
       html: `${icon('plus')}<span>טיול חדש</span>`, onClick: () => openTripSheet(null),
     }),
+  ]));
+
+  host.append(section('גיבוי ושחזור', [
+    el('p', { class: 'dim', style: 'margin:0 0 12px',
+      text: 'קובץ JSON מלא של כל הטיולים. גיבוי הוא באחריותך ובלחיצת כפתור — לא אוטומטי.' }),
+    el('div', { style: 'display:flex; gap:8px' }, [
+      el('button', { class: 'btn btn-secondary btn-block', html: `${icon('share')}<span>גיבוי עכשיו</span>`, onClick: runBackup }),
+      el('button', { class: 'btn btn-danger btn-block', html: `${icon('refresh')}<span>שחזור מקובץ</span>`, onClick: runRestore }),
+    ]),
   ]));
 
   if (trip) {
