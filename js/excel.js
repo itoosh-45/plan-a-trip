@@ -8,75 +8,71 @@ function xlsxLib() {
   return window.XLSX;
 }
 
-function styleHeaderRow(ws, colCount) {
-  const XLSX = xlsxLib();
-  for (let c = 0; c < colCount; c++) {
-    const addr = XLSX.utils.encode_cell({ r: 0, c });
-    if (ws[addr]) ws[addr].s = { fill: { fgColor: { rgb: '06BCC1' } }, font: { bold: true, color: { rgb: 'FFFFFF' } } };
-  }
-}
-
 function sheetFromRows(headers, rows) {
   const XLSX = xlsxLib();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   ws['!cols'] = headers.map(h => ({ wch: Math.max(12, String(h).length + 2) }));
-  styleHeaderRow(ws, headers.length);
+  for (let c = 0; c < headers.length; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    if (ws[addr]) {
+      ws[addr].s = { fill: { fgColor: { rgb: '06BCC1' } }, font: { bold: true, color: { rgb: 'FFFFFF' } } };
+    }
+  }
   return ws;
 }
+
+const ITIN_HEADERS = [
+  'שורה', 'id', 'segmentId', 'סוג מקטע', 'יעד', 'מדינה', 'תאריך התחלה', 'תאריך סיום',
+  'מטבע יעד', 'הקצאה', 'סוג פריט', 'כותרת', 'תאריך', 'שעה', 'תאריך סיום פריט',
+  'מיקום', 'הזמנה', 'קטגוריה', 'מתוכנן', 'מטבע פריט', 'שער פריט',
+];
+const BUDGET_HEADERS = ['יעד', 'הקצאה'];
+const EXP_HEADERS = [
+  'id', 'סוג רשומה', 'סכום', 'מטבע', 'יעד', 'קטגוריה', 'הערה', 'תאריך',
+  'שער', 'תאריך שער', 'מקור שער',
+];
 
 /** בונה קובץ xlsx בפורמט הקבוע (4 גיליונות) עבור טיול יחיד. */
 export async function build(tripId) {
   const XLSX = xlsxLib();
-  const trip = (await trips.listTrips()).find(t => t.id === tripId);
+  const trip = await trips.getTrip(tripId);
   if (!trip) throw new Error('הטיול לא נמצא');
-  const { startDate, endDate } = await trips.tripDates(tripId);
-  const [segments, items, budgets, expenses, categories] = await Promise.all([
+  const [segments, items, expenses, categories] = await Promise.all([
     db.all(db.STORES.segments, tripId),
     db.all(db.STORES.items, tripId),
-    db.all(db.STORES.budgets, tripId),
     db.all(db.STORES.expenses, tripId),
     trips.categories(tripId),
   ]);
   const catName = id => categories.find(c => c.id === id)?.name || '';
+  const segName = id => segments.find(s => s.id === id)?.city || '';
 
   const wb = XLSX.utils.book_new();
   wb.Workbook = { Views: [{ RTL: true }] };
 
-  const wsSummary = sheetFromRows(['שדה', 'ערך'], [
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(['שדה', 'ערך'], [
     ['שם הטיול', trip.name],
-    ['מטבע בית', trip.homeCurrency],
+    ['מטבע ראשי', trip.currency],
     ['תקציב כולל', trip.totalBudget],
-    ['סטטוס', trip.status],
-    ['תאריך התחלה', startDate || ''],
-    ['תאריך סיום', endDate || ''],
-  ]);
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'סיכום');
+    ['תאריך התחלה', trip.startDate || ''],
+    ['תאריך סיום', trip.endDate || ''],
+  ]), 'סיכום');
 
-  const itinHeaders = [
-    'שורה', 'id', 'segmentId', 'עיר', 'מדינה', 'תאריך התחלה', 'תאריך סיום', 'מטבע מקטע',
-    'סוג', 'כותרת', 'תאריך', 'שעה', 'תאריך סיום פריט', 'מיקום', 'הזמנה', 'קטגוריה',
-    'מתוכנן', 'בפועל', 'מטבע פריט', 'סטטוס תשלום', 'אמצעי תשלום', 'שער', 'תאריך שער', 'מקור שער',
-  ];
-  const itinRows = [
-    ...segments.map(s => ['מקטע', s.id, '', s.city, s.country || '', s.startDate, s.endDate, s.currency,
-      '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']),
-    ...items.map(i => ['פריט', i.id, i.segmentId || '', '', '', '', '', '',
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(ITIN_HEADERS, [
+    ...segments.map(s => ['מקטע', s.id, '', s.kind || 'place', s.city, s.country || '',
+      s.startDate || '', s.endDate || '', s.currency || '', s.allocation || 0,
+      '', '', '', '', '', '', '', '', '', '', '']),
+    ...items.map(i => ['פריט', i.id, i.segmentId || '', '', '', '', '', '', '', '',
       i.type, i.title, i.date, i.time || '', i.endDate || '', i.place || '', i.ref || '',
-      catName(i.categoryId), i.plannedAmount ?? '', i.actualAmount ?? '', i.currency || '',
-      i.payStatus || '', i.method || '', i.rateToILS ?? '', i.rateDate || '', i.rateSource || '']),
-  ];
-  XLSX.utils.book_append_sheet(wb, sheetFromRows(itinHeaders, itinRows), 'מסלול');
+      catName(i.categoryId), i.plannedAmount ?? '', i.currency || '', i.rateToILS ?? '']),
+  ]), 'מסלול');
 
-  const budgetHeaders = ['קטגוריה', 'מתוכנן'];
-  const budgetRows = budgets.map(b => [catName(b.categoryId), b.plannedAmount]);
-  XLSX.utils.book_append_sheet(wb, sheetFromRows(budgetHeaders, budgetRows), 'תקציב');
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(BUDGET_HEADERS,
+    segments.map(s => [s.city, s.allocation || 0])), 'תקציב');
 
-  const expHeaders = ['id', 'סכום', 'מטבע', 'תאריך', 'קטגוריה', 'אמצעי תשלום', 'הערה', 'שער', 'תאריך שער', 'מקור שער'];
-  const expRows = expenses.map(e => [
-    e.id, e.amount, e.currency, e.date, catName(e.categoryId), e.method || '', e.note || '',
-    e.rateToILS ?? '', e.rateDate || '', e.rateSource || '',
-  ]);
-  XLSX.utils.book_append_sheet(wb, sheetFromRows(expHeaders, expRows), 'הוצאות');
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(EXP_HEADERS, expenses.map(e => [
+    e.id, e.kind || 'expense', e.amount, e.currency, segName(e.segmentId), catName(e.categoryId),
+    e.note || '', e.date, e.rateToILS ?? '', e.rateDate || '', e.rateSource || '',
+  ])), 'הוצאות');
 
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
   return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -116,9 +112,9 @@ export async function parse(file) {
   }
 
   const need = {
-    'מסלול': ['שורה', 'id', 'סוג', 'כותרת', 'תאריך'],
-    'תקציב': ['קטגוריה', 'מתוכנן'],
-    'הוצאות': ['id', 'סכום', 'מטבע', 'תאריך'],
+    'מסלול': ['שורה', 'id', 'סוג פריט', 'כותרת', 'תאריך'],
+    'תקציב': BUDGET_HEADERS,
+    'הוצאות': ['id', 'סכום', 'מטבע', 'יעד'],
   };
   const errors = [];
   for (const [sheet, cols] of Object.entries(need)) {
@@ -135,14 +131,21 @@ export async function parse(file) {
   sheetRows('מסלול').forEach((row, idx) => {
     const rowNum = idx + 2;
     if (row['שורה'] === 'מקטע') {
-      if (!row['עיר'] || !row['תאריך התחלה']) {
-        errors.push(`שורה ${rowNum} בגיליון "מסלול" — למקטע חסרה עיר או תאריך התחלה`);
+      const kind = row['סוג מקטע'] || 'place';
+      if (!row['יעד']) {
+        errors.push(`שורה ${rowNum} בגיליון "מסלול" — למקטע חסר שם יעד`);
+        return;
+      }
+      if (kind !== 'general' && !row['תאריך התחלה']) {
+        errors.push(`שורה ${rowNum} בגיליון "מסלול" — ליעד חסר תאריך התחלה`);
         return;
       }
       segments.push({
-        id: row['id'] || undefined, city: String(row['עיר']), country: String(row['מדינה'] || ''),
-        startDate: String(row['תאריך התחלה']), endDate: String(row['תאריך סיום'] || row['תאריך התחלה']),
-        currency: String(row['מטבע מקטע'] || 'ILS').toUpperCase(),
+        id: row['id'] || undefined, kind, city: String(row['יעד']), country: String(row['מדינה'] || ''),
+        startDate: row['תאריך התחלה'] ? String(row['תאריך התחלה']) : null,
+        endDate: row['תאריך סיום'] ? String(row['תאריך סיום']) : (row['תאריך התחלה'] ? String(row['תאריך התחלה']) : null),
+        currency: String(row['מטבע יעד'] || 'ILS').toUpperCase(),
+        allocation: Number(row['הקצאה']) || 0,
       });
     } else if (row['שורה'] === 'פריט') {
       if (!row['כותרת'] || !row['תאריך']) {
@@ -151,34 +154,23 @@ export async function parse(file) {
       }
       items.push({
         id: row['id'] || undefined, segmentId: row['segmentId'] || null,
-        type: row['סוג'] || 'other', title: String(row['כותרת']), date: String(row['תאריך']),
+        type: row['סוג פריט'] || 'other', title: String(row['כותרת']), date: String(row['תאריך']),
         time: row['שעה'] || undefined, endDate: row['תאריך סיום פריט'] || undefined,
         place: row['מיקום'] || undefined, ref: row['הזמנה'] || undefined,
-        categoryName: row['קטגוריה'] || '', plannedAmount: num(row['מתוכנן']), actualAmount: num(row['בפועל']),
+        categoryName: row['קטגוריה'] || '', plannedAmount: num(row['מתוכנן']),
         currency: row['מטבע פריט'] ? String(row['מטבע פריט']).toUpperCase() : undefined,
-        payStatus: row['סטטוס תשלום'] || undefined, method: row['אמצעי תשלום'] || undefined,
-        rateToILS: num(row['שער']), rateDate: row['תאריך שער'] || undefined, rateSource: row['מקור שער'] || undefined,
+        rateToILS: num(row['שער פריט']),
       });
     } else {
       errors.push(`שורה ${rowNum} בגיליון "מסלול" — ערך לא מוכר בעמודת "שורה": "${row['שורה']}"`);
     }
   });
 
-  const budgets = [];
-  sheetRows('תקציב').forEach((row, idx) => {
-    const rowNum = idx + 2;
-    if (row['מתוכנן'] === '' || row['מתוכנן'] === undefined) {
-      errors.push(`שורה ${rowNum} בגיליון "תקציב" — חסר סכום מתוכנן`);
-      return;
-    }
-    budgets.push({ categoryName: row['קטגוריה'] || '', plannedAmount: Number(row['מתוכנן']) });
-  });
-
   const expenses = [];
   sheetRows('הוצאות').forEach((row, idx) => {
     const rowNum = idx + 2;
-    if (row['סכום'] === '' || row['סכום'] === undefined || !row['תאריך']) {
-      errors.push(`שורה ${rowNum} בגיליון "הוצאות" — חסר סכום או תאריך`);
+    if (row['סכום'] === '' || row['סכום'] === undefined) {
+      errors.push(`שורה ${rowNum} בגיליון "הוצאות" — חסר סכום`);
       return;
     }
     const n = Number(row['סכום']);
@@ -186,10 +178,15 @@ export async function parse(file) {
       errors.push(`שורה ${rowNum} בגיליון "הוצאות" — הסכום אינו מספר תקין`);
       return;
     }
+    if (!row['יעד']) {
+      errors.push(`שורה ${rowNum} בגיליון "הוצאות" — חסר שיוך ליעד`);
+      return;
+    }
     expenses.push({
-      id: row['id'] || undefined, amount: n, currency: String(row['מטבע'] || 'ILS').toUpperCase(),
-      date: String(row['תאריך']), categoryName: row['קטגוריה'] || '', method: row['אמצעי תשלום'] || undefined,
-      note: row['הערה'] || undefined, rateToILS: num(row['שער']),
+      id: row['id'] || undefined, kind: row['סוג רשומה'] || 'expense', amount: n,
+      currency: String(row['מטבע'] || 'ILS').toUpperCase(), segmentName: String(row['יעד']),
+      categoryName: row['קטגוריה'] || '', note: row['הערה'] || undefined,
+      date: String(row['תאריך'] || ''), rateToILS: num(row['שער']),
       rateDate: row['תאריך שער'] || undefined, rateSource: row['מקור שער'] || undefined,
     });
   });
@@ -199,33 +196,35 @@ export async function parse(file) {
   return {
     ok: true,
     errors: [],
-    preview: { segments: segments.length, items: items.length, budgets: budgets.length, expenses: expenses.length },
-    data: { segments, items, budgets, expenses },
+    preview: { segments: segments.length, items: items.length, expenses: expenses.length },
+    data: { segments, items, expenses },
   };
 }
 
-/** מיישם תצוגה מקדימה שאושרה: מחליף מקטעים/פריטים/תקציב/הוצאות של הטיול הזה בלבד. */
+/** מיישם תצוגה מקדימה שאושרה: מחליף מסלול והוצאות של הטיול הזה בלבד. */
 export async function apply(tripId, parsed) {
   if (!parsed?.ok) throw new Error('אין נתונים תקינים ליישום');
-  const { segments, items, budgets, expenses } = parsed.data;
+  const { segments, items, expenses } = parsed.data;
   const cats = await trips.categories(tripId);
   const catId = name => cats.find(c => c.name === name)?.id || undefined;
 
   await db.removeWhere(db.STORES.segments, tripId);
   await db.removeWhere(db.STORES.items, tripId);
-  await db.removeWhere(db.STORES.budgets, tripId);
   await db.removeWhere(db.STORES.expenses, tripId);
 
   if (segments.length) await db.bulkPut(db.STORES.segments, segments.map(s => ({ ...s, tripId })));
+  await trips.ensureGeneralSegment(tripId);
+
+  const saved = await db.all(db.STORES.segments, tripId);
+  const segId = name => saved.find(s => s.city === name)?.id
+    || saved.find(s => s.kind === 'general')?.id;
+
   if (items.length) await db.bulkPut(db.STORES.items, items.map(({ categoryName, ...i }) => ({
     ...i, tripId, categoryId: catId(categoryName),
   })));
-  if (budgets.length) await db.bulkPut(db.STORES.budgets, budgets.map(b => ({
-    tripId, categoryId: catId(b.categoryName), plannedAmount: b.plannedAmount,
-  })).filter(b => b.categoryId));
-  if (expenses.length) await db.bulkPut(db.STORES.expenses, expenses.map(({ categoryName, ...e }) => ({
-    ...e, tripId, categoryId: catId(categoryName),
+  if (expenses.length) await db.bulkPut(db.STORES.expenses, expenses.map(({ categoryName, segmentName, ...e }) => ({
+    ...e, tripId, categoryId: catId(categoryName), segmentId: segId(segmentName),
   })));
 
-  return { counts: { segments: segments.length, items: items.length, budgets: budgets.length, expenses: expenses.length } };
+  return { counts: { segments: segments.length, items: items.length, expenses: expenses.length } };
 }

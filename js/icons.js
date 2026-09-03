@@ -25,5 +25,9 @@ export const ICONS = {
   download:    '<path d="M12 4v12"/><path d="M8 12l4 4 4-4"/><path d="M5 20h14"/>',
   refresh:     '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>',
   search:      '<circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/>',
+  shopping:    '<path d="M6 8h12l1 12H5L6 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+  gear:        '<path d="M9 6V4h6v2"/><path d="M6 6h12l1 14H5L6 6Z"/><path d="M9 11v5M15 11v5"/>',
+  drag:        '<path d="M9 6h.5M9 12h.5M9 18h.5M15 6h.5M15 12h.5M15 18h.5"/>',
+  wallet:      '<path d="M3 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Z"/><path d="M16 12h3v4h-3a2 2 0 0 1 0-4Z"/>',
   alert:       '<path d="M12 4l9 16H3L12 4Z"/><path d="M12 10v4M12 17v.5"/>',
 };

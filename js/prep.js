@@ -1,8 +1,4 @@
 import * as db from './db.js';
-import { effectiveAmount } from './itinerary.js';
-
-export { effectiveAmount };
-
 const PRIORITY_ORDER = { 'חובה': 0, 'רלוונטי': 1, 'נוחות': 2 };
 
 /**

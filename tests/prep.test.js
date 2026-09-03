@@ -5,7 +5,7 @@ import * as prep from '../js/prep.js';
 
 async function freshTrip() {
   await db.wipe();
-  return trips.createTrip({ name: 'הכנה', homeCurrency: 'ILS' });
+  return trips.createTrip({ name: 'הכנה', currency: 'ILS' });
 }
 
 export default async function () {
@@ -56,9 +56,9 @@ export default async function () {
     await prep.saveTask(t.id, { phase: 'לפני', title: 'ביטוח', priority: 'חובה', plannedAmount: 200 });
     await prep.saveTask(t.id, { phase: 'לפני', title: 'בדיקת דרכון', priority: 'חובה' });
     const tasks = await prep.listTasks(t.id, 'לפני');
-    const total = tasks.reduce((sum, x) => sum + prep.effectiveAmount(x), 0);
+    const total = tasks.reduce((sum, x) => sum + (x.plannedAmount || 0), 0);
     assertEqual(total, 200);
-    assertEqual(prep.effectiveAmount(tasks.find(x => x.title === 'בדיקת דרכון')), 0);
+    assertEqual(tasks.find(x => x.title === 'בדיקת דרכון').plannedAmount, undefined);
   });
 
   s.test('"חובה" שטרם בוצעו מוצגות ראשונות', async () => {
