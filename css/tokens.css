@@ -16,6 +16,19 @@
   --color-success: #0E9F6E;
   --color-warning: #D97706;
 
+  /* גרדיאנט כרטיס הטיול — נגזר מ---color-accent, בלי צבע חדש בפלטה */
+  --gradient-trip: linear-gradient(
+    158deg,
+    var(--color-accent) 0%,
+    color-mix(in srgb, var(--color-accent) 30%, #000) 52%,
+    color-mix(in srgb, var(--color-accent) 6%, #000) 100%
+  );
+
+  /* דחיפות ברשימת ההכנה — אותה שפת צבע גם לסטטוס התקציב */
+  --urgency-critical: var(--color-danger);
+  --urgency-important: var(--color-warning);
+  --urgency-normal: var(--color-accent);
+
   --radius-card: 16px;
   --radius-control: 12px;
 
@@ -28,4 +41,5 @@
 
   --nav-height: 64px;
   --touch-min: 44px;
+  --date-row-width: 75%;
 }

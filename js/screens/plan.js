@@ -1,76 +1,65 @@
-import * as it from '../itinerary.js';
 import * as trips from '../trips.js';
+import * as it from '../itinerary.js';
+import * as prep from '../prep.js';
 import * as money from '../money.js';
-import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtDateRange, fmtDate, nightsBetween } from '../ui.js';
+import * as rates from '../rates.js';
+import * as cur from '../currencies.js';
+import {
+  el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote,
+  fmtMoney, fmtDate, fmtDateRange, nightsBetween,
+} from '../ui.js';
 import { refresh } from '../app.js';
-import { mountPrepCard } from './prep.js';
 
-const openSegments = new Set();   // נשמר בין רינדורים כדי שהפתיחה לא תיסגר בכל שמירה
+let openSegmentId = null;   // null = רשימת היעדים; אחרת תצוגת היעד
 let openDay = null;
 
-function typeLabel(key) {
-  return it.ITEM_TYPES.find(t => t.key === key)?.label || 'אחר';
-}
-function typeIcon(key) {
-  return it.ITEM_TYPES.find(t => t.key === key)?.icon || 'other';
+const typeOf = key => it.ITEM_TYPES.find(t => t.key === key) || it.ITEM_TYPES.at(-1);
+
+function row(label, node) {
+  return el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: label }), node]);
 }
 
-function segmentForm(existing) {
+function dateRange(from, to, { min, max } = {}) {
+  const start = el('input', { class: 'field', type: 'date', value: from || '', min, max, 'aria-label': 'מתאריך' });
+  const end = el('input', { class: 'field', type: 'date', value: to || '', min, max, 'aria-label': 'עד תאריך' });
+  return { node: el('div', { class: 'date-row field-row' }, [start, end]), start, end };
+}
+
+// ---------- יעד ----------
+
+function openSegmentSheet(trip, existing) {
   const city = el('input', { class: 'field', type: 'text', value: existing?.city || '' });
   const country = el('input', { class: 'field', type: 'text', value: existing?.country || '' });
-  const start = el('input', { class: 'field', type: 'date', value: existing?.startDate || '' });
-  const end = el('input', { class: 'field', type: 'date', value: existing?.endDate || '' });
-  const currency = el('input', { class: 'field', type: 'text', maxlength: '3', style: 'text-transform:uppercase', value: existing?.currency || '' });
+  const range = dateRange(existing?.startDate, existing?.endDate, {
+    min: trip.startDate || undefined, max: trip.endDate || undefined,
+  });
+  const allocation = el('input', {
+    class: 'field', type: 'number', inputmode: 'decimal', step: '1', value: existing?.allocation || '',
+  });
 
-  const body = el('div', {}, [
-    el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: 'עיר' }), city]),
-    el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: 'מדינה' }), country]),
-    el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: 'מתאריך' }), start]),
-    el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: 'עד תאריך' }), end]),
-    el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: 'מטבע מקומי' }), currency]),
-  ]);
-
-  return { body, read: () => ({
-    id: existing?.id,
-    city: city.value,
-    country: country.value,
-    startDate: start.value,
-    endDate: end.value,
-    currency: (currency.value || 'ILS').toUpperCase(),
-  }) };
-}
-
-function openSegmentSheet(tripId, existing) {
-  const form = segmentForm(existing);
-  const actions = [
-    el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
-    el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
-      try {
-        await it.saveSegment(tripId, form.read());
-        toast('המקטע נשמר', 'success');
-        s.close();
-        refresh();
-      } catch (err) { toast(err.message, 'error'); }
-    } }),
-  ];
-  const s = sheet({ title: existing ? 'עריכת מקטע' : 'מקטע חדש', body: form.body, actions });
-}
-
-function openMoveSheet(tripId, seg) {
-  const date = el('input', { class: 'field', type: 'date', value: seg.startDate });
   const s = sheet({
-    title: `הזזת ${seg.city}`,
+    title: existing ? 'עריכת יעד' : 'יעד חדש',
     body: el('div', {}, [
-      el('p', { class: 'dim', style: 'margin:0 0 12px',
-        text: 'כל הפריטים שבתוך המקטע יזוזו באותו מספר ימים.' }),
-      el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: 'תאריך התחלה חדש' }), date]),
+      row('שם היעד', city),
+      row('מדינה', country),
+      el('label', { class: 'field-label', style: 'margin-block-start:12px', text: 'טווח התאריכים ביעד' }),
+      range.node,
+      row(`הקצאת תקציב (${trip.currency})`, allocation),
+      el('p', { class: 'dim', style: 'font-size:13px',
+        text: 'התאריכים חייבים ליפול בתוך טווח הטיול, ואסור שיחפפו ליעד אחר.' }),
     ]),
     actions: [
       el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
-      el('button', { class: 'btn btn-primary btn-block', text: 'הזז', onClick: async () => {
+      el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
         try {
-          await it.moveSegment(tripId, seg.id, date.value);
-          toast('המקטע הוזז', 'success');
+          await it.saveSegment(trip.id, {
+            ...existing,
+            city: city.value, country: country.value,
+            startDate: range.start.value, endDate: range.end.value,
+            allocation: Number(allocation.value) || 0,
+            currency: existing?.currency || trip.currency,
+          });
+          toast('היעד נשמר', 'success');
           s.close();
           refresh();
         } catch (err) { toast(err.message, 'error'); }
@@ -79,92 +68,71 @@ function openMoveSheet(tripId, seg) {
   });
 }
 
-async function openItemSheet(tripId, date, segmentId, existing) {
-  const cats = await trips.categories(tripId);
+// ---------- פריט מסלול ----------
+
+async function openItemSheet(trip, seg, date, existing) {
+  const cats = await trips.categories(trip.id);
+  const currencies = await cur.listActive();
 
   const type = el('select', { class: 'field' }, it.ITEM_TYPES.map(t =>
     el('option', { value: t.key, selected: (existing?.type || 'attraction') === t.key, text: t.label })));
   const title = el('input', { class: 'field', type: 'text', value: existing?.title || '' });
-  const dateF = el('input', { class: 'field', type: 'date', value: existing?.date || date });
+  const dateF = el('input', {
+    class: 'field', type: 'date', value: existing?.date || date,
+    min: seg.startDate || undefined, max: seg.endDate || undefined,
+  });
   const time = el('input', { class: 'field', type: 'time', value: existing?.time || '' });
-  const endDate = el('input', { class: 'field', type: 'date', value: existing?.endDate || '' });
   const place = el('input', { class: 'field', type: 'text', value: existing?.place || '' });
-  const ref = el('input', { class: 'field', type: 'text', value: existing?.ref || '', placeholder: 'מספר הזמנה או קישור' });
+  const ref = el('input', {
+    class: 'field', type: 'text', value: existing?.ref || '', placeholder: 'מספר הזמנה או קישור',
+  });
+  const note = el('input', { class: 'field', type: 'text', value: existing?.note || '' });
   const category = el('select', { class: 'field' }, [
     el('option', { value: '', text: 'ללא קטגוריה' }),
     ...cats.map(c => el('option', { value: c.id, selected: existing?.categoryId === c.id, text: c.name })),
   ]);
-  const planned = el('input', { class: 'field', type: 'number', inputmode: 'decimal', step: '0.01', value: existing?.plannedAmount ?? '' });
-  const actual = el('input', { class: 'field', type: 'number', inputmode: 'decimal', step: '0.01', value: existing?.actualAmount ?? '' });
-  const currency = el('input', { class: 'field', type: 'text', maxlength: '3', style: 'text-transform:uppercase', value: existing?.currency || '' });
-  const payStatus = el('select', { class: 'field' }, Object.entries(it.PAY_STATUS).map(([k, v]) =>
-    el('option', { value: k, selected: (existing?.payStatus || 'planned') === k, text: v })));
-  const method = el('select', { class: 'field' }, [
-    el('option', { value: '', text: 'לא נקבע' }),
-    ...Object.entries(it.PAY_METHOD).map(([k, v]) =>
-      el('option', { value: k, selected: existing?.method === k, text: v })),
-  ]);
-
-  const row = (label, node) => el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: label }), node]);
-
-  const body = el('div', {}, [
-    row('סוג', type), row('כותרת', title), row('תאריך', dateF), row('שעה', time),
-    row('תאריך סיום (ללינה)', endDate), row('מיקום', place), row('הזמנה או קישור', ref),
-    row('קטגוריית תקציב', category), row('סכום מתוכנן', planned), row('סכום בפועל', actual),
-    row('מטבע', currency), row('סטטוס תשלום', payStatus), row('אמצעי תשלום', method),
-    el('p', { class: 'dim', style: 'font-size:13px; margin-block-start:12px',
-      text: 'כשמוזן סכום בפועל, הוא זה שנספר בתקציב ובסיכום. הסכום המתוכנן נשמר כדי להראות את הפער.' }),
-  ]);
-
-  const num = f => (f.value === '' ? undefined : Number(f.value));
+  const planned = amountField({
+    amount: existing?.plannedAmount, currency: existing?.currency || trip.currency, currencies,
+  });
 
   const s = sheet({
     title: existing ? 'עריכת פריט' : 'פריט חדש',
-    body,
+    body: el('div', {}, [
+      row('סוג', type), row('כותרת', title), row('תאריך', dateF), row('שעה', time),
+      row('מיקום', place), row('הזמנה או קישור', ref), row('קטגוריה', category),
+      row('עלות מתוכננת', planned.node), row('הערות', note),
+      el('p', { class: 'dim', style: 'font-size:13px',
+        text: 'זו עלות מתוכננת בלבד. כסף שיצא בפועל נרשם בטאב "הוצאות".' }),
+    ]),
     actions: [
       existing
         ? el('button', { class: 'btn btn-danger btn-block', text: 'מחק', onClick: async () => {
             const ok = await confirmDanger({ title: 'למחוק את הפריט?', body: existing.title, confirmLabel: 'מחק' });
             if (!ok) return;
-            await it.removeItem(tripId, existing.id);
-            toast('הפריט נמחק', 'success');
+            await it.removeItem(trip.id, existing.id);
             s.close();
             refresh();
           } })
         : el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
         try {
-          const cur = (currency.value || '').toUpperCase() || undefined;
-          const payload = {
-            id: existing?.id,
-            segmentId: existing?.segmentId ?? segmentId ?? null,
+          const amount = planned.read();
+          const stamped = existing?.rateToILS ? {} : await rates.stamp(amount.currency);
+          await it.saveItem(trip.id, {
+            ...existing,
+            segmentId: seg.id,
             type: type.value,
             title: title.value,
             date: dateF.value,
             time: time.value || undefined,
-            endDate: endDate.value || undefined,
             place: place.value || undefined,
             ref: ref.value || undefined,
+            note: note.value || undefined,
             categoryId: category.value || undefined,
-            plannedAmount: num(planned),
-            actualAmount: num(actual),
-            currency: cur,
-            payStatus: payStatus.value,
-            method: method.value || undefined,
-            rateToILS: existing?.rateToILS,
-            rateDate: existing?.rateDate,
-            rateSource: existing?.rateSource,
-          };
-          // צריבת שער ברגע ההזנה — רק אם עוד אין שער קפוא ויש שער שמור למטבע.
-          if (cur && cur !== 'ILS' && !payload.rateToILS) {
-            const rateInfo = await money.getRate(cur);
-            if (rateInfo) {
-              payload.rateToILS = rateInfo.rate;
-              payload.rateDate = new Date().toISOString().slice(0, 10);
-              payload.rateSource = rateInfo.source;
-            }
-          }
-          await it.saveItem(tripId, payload);
+            plannedAmount: amount.amount,
+            currency: amount.currency,
+            ...stamped,
+          });
           toast('הפריט נשמר', 'success');
           s.close();
           refresh();
@@ -174,124 +142,194 @@ async function openItemSheet(tripId, date, segmentId, existing) {
   });
 }
 
-export async function mount(host, tripId) {
-  if (!tripId) {
-    host.append(card([el('div', { class: 'dim', text: 'צרו טיול במסך ההגדרות כדי להתחיל לתכנן.' })], 'card-gap'));
-    return;
-  }
+// ---------- תצוגת יעד יחיד ----------
 
-  await mountPrepCard(host, tripId);
+async function renderSegment(host, trip, seg) {
+  const [items, tasks] = await Promise.all([it.listItems(trip.id), prep.listTasks(trip.id)]);
+  const mine = items.filter(i => i.segmentId === seg.id);
+  const byDate = it.itemsByDate(mine);
+  const segTasks = tasks.filter(t => t.segmentId === seg.id);
 
-  const [segs, items] = await Promise.all([it.listSegments(tripId), it.listItems(tripId)]);
-  const byDate = it.itemsByDate(items);
-  const overlaps = it.overlappingSegments(segs);
+  host.append(el('button', {
+    class: 'group-head card-gap', style: 'color:var(--color-accent)',
+    onClick: () => { openSegmentId = null; refresh(); },
+  }, [el('span', { html: icon('chevronLeft') }), el('span', { text: 'חזרה לכל היעדים' })]));
 
-  if (!segs.length) {
+  host.append(card([
+    el('div', { style: 'display:flex; align-items:flex-start; gap:8px' }, [
+      el('div', { class: 'grow' }, [
+        el('div', { style: 'font-weight:700; font-size:18px',
+          text: seg.country ? `${seg.city}, ${seg.country}` : seg.city }),
+        el('div', { class: 'sub',
+          text: `${fmtDateRange(seg.startDate, seg.endDate)} · ${nightsBetween(seg.startDate, seg.endDate)} לילות` }),
+      ]),
+      el('button', { class: 'icon-btn', 'aria-label': 'ערוך יעד', html: icon('edit'),
+        onClick: () => openSegmentSheet(trip, seg) }),
+    ]),
+    el('div', { class: 'row' }, [
+      el('span', { class: 'grow dim', text: 'הקצאת תקציב' }),
+      el('span', { class: 'num', text: fmtMoney(seg.allocation || 0, trip.currency) }),
+    ]),
+  ], 'card-gap'));
+
+  for (const day of it.segmentDays(seg)) {
+    const dayItems = byDate.get(day) || [];
+    const isOpen = openDay === day;
     host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'אין עדיין מקטעים' }),
-      el('div', { class: 'dim', text: 'מקטע הוא עיר עם טווח תאריכים. הימים נגזרים ממנו.' }),
+      el('button', {
+        class: 'group-head', 'aria-expanded': String(isOpen),
+        onClick: () => { openDay = isOpen ? null : day; refresh(); },
+      }, [
+        el('span', { html: icon('chevronDown'),
+          style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : -90}deg)` }),
+        el('span', { class: 'grow', style: 'font-weight:700', text: fmtDate(day) }),
+        el('span', { class: 'dim', style: 'font-size:13px',
+          text: dayItems.length ? `${dayItems.length} פריטים` : 'אין תכנון' }),
+      ]),
+      ...dayItems.map(i => el('button', {
+        class: 'row', style: 'width:100%; background:none; border:0; text-align:start; cursor:pointer; font:inherit; color:inherit',
+        onClick: () => openItemSheet(trip, seg, day, i),
+      }, [
+        el('span', { class: 'cat-icon', html: icon(typeOf(i.type).icon),
+          style: 'background:var(--color-surface-2); color:var(--color-accent)' }),
+        el('span', { class: 'grow' }, [
+          el('span', { style: 'display:block', text: i.title }),
+          el('span', { class: 'sub' }, [
+            el('span', { text: `${typeOf(i.type).label}${i.time ? ` · ${i.time}` : ''}` }),
+            i.place ? el('span', { text: ` · ${i.place}` }) : null,
+            i.note ? el('span', { text: ` · ${i.note}` }) : null,
+          ]),
+        ]),
+        i.plannedAmount
+          ? el('span', {}, [
+              el('div', { class: 'num', text: fmtMoney(i.plannedAmount, i.currency || trip.currency) }),
+              ilsNote(i.plannedAmount, i.currency || trip.currency, i.rateToILS),
+            ])
+          : null,
+      ])),
+      isOpen
+        ? el('button', {
+            class: 'btn btn-secondary btn-block', style: 'margin-block-start:8px',
+            html: `${icon('plus')}<span>הוסף פריט ל-${fmtDate(day)}</span>`,
+            onClick: () => openItemSheet(trip, seg, day, null),
+          })
+        : null,
     ], 'card-gap'));
   }
 
-  for (const seg of segs) {
-    const days = it.segmentDays(seg);
-    const cost = items
-      .filter(i => i.segmentId === seg.id)
-      .reduce((sum, i) => sum + it.effectiveAmount(i), 0);
-    const isOpen = openSegments.has(seg.id);
+  host.append(card([
+    el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'צ׳קליסט ליעד' }),
+    segTasks.length
+      ? el('div', {}, segTasks.map(t => el('div', { class: 'row' }, [
+          el('button', {
+            class: 'tick', 'aria-pressed': String(!!t.done), 'aria-label': t.title, html: icon('check'),
+            style: `--urgency: var(--urgency-${t.urgency || 'normal'})`,
+            onClick: async () => { await prep.toggleDone(trip.id, t.id); refresh(); },
+          }),
+          el('span', { class: 'grow', text: t.title }),
+          el('span', { class: 'sub', text: prep.URGENCY[t.urgency] || 'רגיל' }),
+        ])))
+      : el('div', { class: 'dim', text: 'אין עדיין משימות שמשויכות ליעד הזה.' }),
+    el('div', { class: 'sub', style: 'margin-block-start:8px',
+      text: 'שיוך משימה ליעד נעשה בעריכת המשימה בטאב "רשימת הכנה".' }),
+  ], 'card-gap'));
 
-    const head = el('button', {
-      style: 'display:flex; align-items:center; gap:8px; width:100%; background:none; border:0; padding:0; text-align:start; cursor:pointer; min-height:44px',
-      'aria-expanded': String(isOpen),
-      onClick: () => {
-        if (isOpen) openSegments.delete(seg.id); else openSegments.add(seg.id);
+  if (seg.kind !== 'general') {
+    host.append(el('button', {
+      class: 'btn btn-danger btn-block card-gap',
+      html: `${icon('trash')}<span>מחק את היעד</span>`,
+      onClick: async () => {
+        const ok = await confirmDanger({
+          title: `למחוק את ${seg.city}?`,
+          body: 'הפריטים, ההוצאות והמשימות שלו יעברו למקטע "כללי" ולא יימחקו.',
+          confirmLabel: 'מחק יעד',
+        });
+        if (!ok) return;
+        await it.removeSegment(trip.id, seg.id);
+        openSegmentId = null;
+        toast('היעד נמחק', 'success');
         refresh();
       },
-    }, [
-      el('span', { html: icon('chevronDown'), style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : -90}deg)` }),
-      el('span', { style: 'flex:1' }, [
-        el('div', { style: 'font-weight:700', text: seg.country ? `${seg.city}, ${seg.country}` : seg.city }),
-        el('div', { class: 'dim', style: 'font-size:14px',
-          text: `${fmtDateRange(seg.startDate, seg.endDate)} · ${nightsBetween(seg.startDate, seg.endDate)} לילות · ${seg.currency}` }),
-      ]),
-      el('span', { class: 'num', style: 'font-weight:700', text: cost ? fmtMoney(cost, seg.currency) : '' }),
-    ]);
+    }));
+  }
+}
 
-    const body = [];
-    if (isOpen) {
-      if (overlaps.has(seg.id)) {
-        body.push(el('div', {
-          style: 'display:flex; gap:6px; align-items:center; color:var(--color-warning); font-size:13px; margin-block-start:8px',
-          html: `${icon('alert')}<span>יום מעבר משותף עם מקטע נוסף</span>`,
-        }));
-      }
-      for (const d of days) {
-        const dayItems = (byDate.get(d) || []).filter(i => i.segmentId === seg.id || i.segmentId === null);
-        body.push(el('div', { class: 'hairline', style: 'padding-block:10px' }, [
-          el('button', {
-            style: 'display:flex; justify-content:space-between; width:100%; background:none; border:0; padding:0; min-height:44px; cursor:pointer; text-align:start',
-            onClick: () => { openDay = openDay === `${seg.id}|${d}` ? null : `${seg.id}|${d}`; refresh(); },
-          }, [
-            el('span', { style: 'font-weight:600', text: fmtDate(d) }),
-            el('span', { class: 'dim', style: 'font-size:13px', text: dayItems.length ? `${dayItems.length} פריטים` : 'אין תכנון' }),
-          ]),
-          ...dayItems.map(i => el('button', {
-            style: 'display:flex; align-items:center; gap:8px; width:100%; background:none; border:0; padding:8px 0; min-height:44px; cursor:pointer; text-align:start',
-            onClick: () => openItemSheet(tripId, d, seg.id, i),
-          }, [
-            el('span', { html: icon(typeIcon(i.type)), style: 'color:var(--color-accent)' }),
-            el('span', { class: 'dim num', style: 'font-size:13px; min-width:44px', text: i.time || '' }),
-            el('span', { style: 'flex:1; overflow-wrap:anywhere', text: i.title }),
-            el('span', { class: 'num', style: 'font-size:14px',
-              text: it.effectiveAmount(i) ? fmtMoney(it.effectiveAmount(i), i.currency || seg.currency) : '' }),
-          ])),
-          openDay === `${seg.id}|${d}`
-            ? el('button', {
-                class: 'btn btn-secondary btn-block', style: 'margin-block-start:8px',
-                html: `${icon('plus')}<span>הוסף פריט ל-${fmtDate(d)}</span>`,
-                onClick: () => openItemSheet(tripId, d, seg.id, null),
-              })
-            : null,
-        ]));
-      }
-      body.push(el('div', { style: 'display:flex; gap:8px; margin-block-start:12px' }, [
-        el('button', { class: 'btn btn-tertiary btn-block', text: 'ערוך מקטע', onClick: () => openSegmentSheet(tripId, seg) }),
-        el('button', { class: 'btn btn-tertiary btn-block', text: 'הזז', onClick: () => openMoveSheet(tripId, seg) }),
-        el('button', { class: 'btn btn-danger', 'aria-label': 'מחק מקטע', html: icon('trash'), onClick: async () => {
-          const ok = await confirmDanger({
-            title: `למחוק את המקטע ${seg.city}?`,
-            body: 'הפריטים שבתוכו יישמרו, אך יאבדו את השיוך למקטע.',
-            confirmLabel: 'מחק מקטע',
-          });
-          if (!ok) return;
-          await it.removeSegment(tripId, seg.id);
-          openSegments.delete(seg.id);
-          toast('המקטע נמחק', 'success');
-          refresh();
-        } }),
-      ]));
-    }
+// ---------- המסך ----------
 
-    host.append(card([head, ...body], 'card-gap'));
+export async function mount(host, tripId) {
+  if (!tripId) {
+    host.append(card([
+      el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'אין עדיין טיול' }),
+      el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי להתחיל לתכנן.' }),
+    ], 'card-gap'));
+    return;
   }
 
-  const orphans = items.filter(i => i.segmentId === null);
-  if (orphans.length) {
+  const trip = await trips.getTrip(tripId);
+  const segs = await it.listSegments(tripId);
+
+  if (openSegmentId) {
+    const seg = segs.find(s => s.id === openSegmentId);
+    if (seg) { await renderSegment(host, trip, seg); return; }
+    openSegmentId = null;
+  }
+
+  const totals = await money.tripTotals(tripId);
+  const budget = await trips.budgetSummary(tripId);
+
+  host.append(card([
+    el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'תקציב הטיול' }),
+    el('div', { class: 'row' }, [
+      el('span', { class: 'grow dim', text: 'תקרה' }),
+      el('span', { class: 'num', text: fmtMoney(budget.ceiling, trip.currency) }),
+    ]),
+    el('div', { class: 'row' }, [
+      el('span', { class: 'grow dim', text: 'סך שהוקצה' }),
+      el('span', { class: 'num', text: fmtMoney(budget.allocated, trip.currency) }),
+    ]),
+    el('div', { class: 'row' }, [
+      el('span', { class: 'grow', style: 'font-weight:700', text: 'יתרה לא מוקצית' }),
+      el('span', { class: `pill ${budget.over ? 'over' : 'ok'} num`,
+        text: fmtMoney(budget.unallocated, trip.currency) }),
+    ]),
+    budget.over
+      ? el('div', { class: 'toast warning', style: 'margin-block-start:12px',
+          text: `ההקצאות ליעדים עוברות את התקרה ב-${fmtMoney(-budget.unallocated, trip.currency)}. אפשר לשמור, אבל שווה לבדוק.` })
+      : null,
+  ], 'card-gap'));
+
+  for (const seg of segs) {
+    const stat = totals.bySegment.find(x => x.id === seg.id) || { amount: 0, allocation: 0, over: false };
+    const pct = stat.allocation ? Math.min(Math.round((stat.amount / stat.allocation) * 100), 100) : 0;
     host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'פריטים ללא מקטע' }),
-      ...orphans.map(i => el('button', {
-        style: 'display:flex; align-items:center; gap:8px; width:100%; background:none; border:0; padding:8px 0; min-height:44px; cursor:pointer; text-align:start',
-        onClick: () => openItemSheet(tripId, i.date, null, i),
+      el('button', {
+        class: 'group-head',
+        onClick: () => { openSegmentId = seg.id; openDay = null; refresh(); },
       }, [
-        el('span', { html: icon(typeIcon(i.type)), style: 'color:var(--color-accent)' }),
-        el('span', { style: 'flex:1; overflow-wrap:anywhere', text: `${fmtDate(i.date)} · ${i.title}` }),
-      ])),
+        el('span', { class: 'grow' }, [
+          el('div', { style: 'font-weight:700; font-size:16px', text: seg.city }),
+          el('div', { class: 'sub',
+            text: seg.kind === 'general'
+              ? 'הוצאות שאינן שייכות ליעד ספציפי'
+              : `${fmtDateRange(seg.startDate, seg.endDate)} · ${nightsBetween(seg.startDate, seg.endDate)} לילות` }),
+        ]),
+        el('span', { html: icon('chevronLeft'), style: 'color:var(--color-accent)' }),
+      ]),
+      el('div', { class: 'row' }, [
+        el('span', { class: 'grow num', text: `${fmtMoney(stat.amount, trip.currency)} מתוך ${fmtMoney(stat.allocation, trip.currency)}` }),
+        stat.allocation
+          ? el('span', { class: `pill ${stat.over ? 'over' : 'ok'}`, text: stat.over ? 'חריגה' : 'בתקציב' })
+          : el('span', { class: 'sub', text: 'ללא הקצאה' }),
+      ]),
+      el('div', { class: 'bar' }, [
+        el('span', { class: stat.over ? 'over' : '', style: `width:${stat.over ? 100 : pct}%` }),
+      ]),
     ], 'card-gap'));
   }
 
   host.append(el('button', {
-    class: 'btn btn-primary fab', 'aria-label': 'הוסף מקטע',
-    html: `${icon('plus')}<span>מקטע</span>`,
-    onClick: () => openSegmentSheet(tripId, null),
+    class: 'btn btn-primary btn-block card-gap',
+    html: `${icon('plus')}<span>יעד חדש</span>`,
+    onClick: () => openSegmentSheet(trip, null),
   }));
 }

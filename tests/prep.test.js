@@ -1,4 +1,4 @@
-import { suite, assertEqual, assertTrue } from './harness.js';
+import { suite, assertEqual, assertTrue, assertThrows } from './harness.js';
 import * as db from '../js/db.js';
 import * as trips from '../js/trips.js';
 import * as prep from '../js/prep.js';
@@ -12,12 +12,30 @@ export default async function () {
   const s = suite('רשימת הכנה');
   await db.useTestDatabase();
 
-  s.test('currentPhase ממופה נכון לפי סטטוס הטיול', () => {
-    assertEqual(prep.currentPhase('planned'), 'לפני');
-    assertEqual(prep.currentPhase('done'), 'בחזרה');
-    assertEqual(prep.currentPhase('active', { startDate: '2026-10-01', endDate: '2026-10-05', today: '2026-10-03' }), 'בשהות');
-    assertEqual(prep.currentPhase('active', { startDate: '2026-10-01', endDate: '2026-10-05', today: '2026-10-01' }), 'בדרך');
-    assertEqual(prep.currentPhase('active', { startDate: '2026-10-01', endDate: '2026-10-05', today: '2026-10-05' }), 'בדרך');
+  s.test('שלוש קטגוריות ושלוש רמות דחיפות בלבד', () => {
+    assertEqual(Object.keys(prep.STAGES), ['before', 'during', 'after']);
+    assertEqual(Object.keys(prep.URGENCY), ['critical', 'important', 'normal']);
+  });
+
+  s.test('ארבעת שלבי הקטלוג ממופים לשלוש הקטגוריות, ו"בדרך" נכנס ל"לפני"', () => {
+    assertEqual(prep.STAGE_BY_PHASE['לפני'], 'before');
+    assertEqual(prep.STAGE_BY_PHASE['בדרך'], 'before');
+    assertEqual(prep.STAGE_BY_PHASE['בשהות'], 'during');
+    assertEqual(prep.STAGE_BY_PHASE['בחזרה'], 'after');
+  });
+
+  s.test('addFromCatalog ממפה עדיפות לדחיפות', async () => {
+    const t = await freshTrip();
+    await prep.addFromCatalog(t.id, [
+      { id: 'p0001', phase: 'לפני', text: 'בדיקת דרכון', priority: 'חובה' },
+      { id: 'p0002', phase: 'בשהות', text: 'סים מקומי', priority: 'רלוונטי' },
+      { id: 'p0003', phase: 'בחזרה', text: 'החזר מס', priority: 'נוחות' },
+    ]);
+    const all = await prep.listTasks(t.id);
+    const by = Object.fromEntries(all.map(x => [x.title, [x.stage, x.urgency]]));
+    assertEqual(by['בדיקת דרכון'], ['before', 'critical']);
+    assertEqual(by['סים מקומי'], ['during', 'important']);
+    assertEqual(by['החזר מס'], ['after', 'normal']);
   });
 
   s.test('addFromCatalog מונע הוספה כפולה לפי catalogId', async () => {
@@ -29,15 +47,15 @@ export default async function () {
     await prep.addFromCatalog(t.id, items);
     const again = await prep.addFromCatalog(t.id, items);
     assertEqual(again.length, 0, 'הוספה שנייה לא סירבה');
-    assertEqual((await prep.listTasks(t.id, 'לפני')).length, 2);
+    assertEqual((await prep.listTasks(t.id, 'before')).length, 2);
   });
 
   s.test('משימה מהקטלוג הופכת לרשומה עצמאית וניתנת לעריכה', async () => {
     const t = await freshTrip();
     await prep.addFromCatalog(t.id, [{ id: 'p0010', phase: 'לפני', text: 'מקור', priority: 'רלוונטי' }]);
-    const [task] = await prep.listTasks(t.id, 'לפני');
+    const [task] = await prep.listTasks(t.id, 'before');
     await prep.saveTask(t.id, { ...task, title: 'נערך ידנית' });
-    const [updated] = await prep.listTasks(t.id, 'לפני');
+    const [updated] = await prep.listTasks(t.id, 'before');
     assertEqual(updated.title, 'נערך ידנית');
     assertEqual(updated.catalogId, 'p0010', 'הקשר לקטלוג אבד');
   });
@@ -51,33 +69,53 @@ export default async function () {
     assertEqual((await db.get(db.STORES.prepTasks, task.id)).done, false);
   });
 
+  s.test('setUrgency משנה דחיפות בלבד ואינו נוגע בקטגוריה', async () => {
+    const t = await freshTrip();
+    const task = await prep.saveTask(t.id, { stage: 'during', title: 'כביסה', urgency: 'normal' });
+    const moved = await prep.setUrgency(t.id, task.id, 'critical');
+    assertEqual([moved.urgency, moved.stage], ['critical', 'during']);
+  });
+
+  s.test('setStage מעביר בין קטגוריות ואינו נוגע בדחיפות', async () => {
+    const t = await freshTrip();
+    const task = await prep.saveTask(t.id, { stage: 'before', title: 'דרכון', urgency: 'critical' });
+    const moved = await prep.setStage(t.id, task.id, 'after');
+    assertEqual([moved.stage, moved.urgency], ['after', 'critical']);
+  });
+
+  s.test('דחיפות או קטגוריה לא מוכרת נדחות', async () => {
+    const t = await freshTrip();
+    const task = await prep.saveTask(t.id, { stage: 'before', title: 'א' });
+    await assertThrows(() => prep.setUrgency(t.id, task.id, 'דחוף מאוד'), 'דחיפות פסולה התקבלה');
+    await assertThrows(() => prep.setStage(t.id, task.id, 'אי־שם'), 'קטגוריה פסולה התקבלה');
+  });
+
   s.test('משימה עם סכום נספרת פעם אחת בלבד, ומשימה ללא סכום אינה נוגעת בכסף', async () => {
     const t = await freshTrip();
-    await prep.saveTask(t.id, { phase: 'לפני', title: 'ביטוח', priority: 'חובה', plannedAmount: 200 });
-    await prep.saveTask(t.id, { phase: 'לפני', title: 'בדיקת דרכון', priority: 'חובה' });
-    const tasks = await prep.listTasks(t.id, 'לפני');
-    const total = tasks.reduce((sum, x) => sum + (x.plannedAmount || 0), 0);
-    assertEqual(total, 200);
+    await prep.saveTask(t.id, { stage: 'before', title: 'ביטוח', urgency: 'critical', plannedAmount: 200 });
+    await prep.saveTask(t.id, { stage: 'before', title: 'בדיקת דרכון', urgency: 'critical' });
+    const tasks = await prep.listTasks(t.id, 'before');
+    assertEqual(tasks.reduce((sum, x) => sum + (x.plannedAmount || 0), 0), 200);
     assertEqual(tasks.find(x => x.title === 'בדיקת דרכון').plannedAmount, undefined);
   });
 
-  s.test('"חובה" שטרם בוצעו מוצגות ראשונות', async () => {
+  s.test('קריטי שטרם בוצע מוצג ראשון, ומה שבוצע יורד לסוף', async () => {
     const t = await freshTrip();
-    await prep.saveTask(t.id, { phase: 'לפני', title: 'נוחות', priority: 'נוחות' });
-    await prep.saveTask(t.id, { phase: 'לפני', title: 'חובה בוצע', priority: 'חובה', done: true });
-    await prep.saveTask(t.id, { phase: 'לפני', title: 'חובה פתוח', priority: 'חובה' });
-    const tasks = await prep.listTasks(t.id, 'לפני');
-    assertEqual(tasks[0].title, 'חובה פתוח');
-    assertEqual(tasks[tasks.length - 1].title, 'חובה בוצע', 'המשימה שבוצעה לא ירדה לסוף');
+    await prep.saveTask(t.id, { stage: 'before', title: 'רגיל', urgency: 'normal' });
+    await prep.saveTask(t.id, { stage: 'before', title: 'קריטי בוצע', urgency: 'critical', done: true });
+    await prep.saveTask(t.id, { stage: 'before', title: 'קריטי פתוח', urgency: 'critical' });
+    const tasks = await prep.listTasks(t.id, 'before');
+    assertEqual(tasks[0].title, 'קריטי פתוח');
+    assertEqual(tasks[tasks.length - 1].title, 'קריטי בוצע', 'המשימה שבוצעה לא ירדה לסוף');
   });
 
-  s.test('progress סופר done/total נכון לשלב נתון', async () => {
+  s.test('progress סופר done/total נכון לקטגוריה נתונה', async () => {
     const t = await freshTrip();
-    await prep.saveTask(t.id, { phase: 'לפני', title: 'א', priority: 'חובה', done: true });
-    await prep.saveTask(t.id, { phase: 'לפני', title: 'ב', priority: 'חובה' });
-    await prep.saveTask(t.id, { phase: 'בדרך', title: 'ג', priority: 'חובה' });
-    assertEqual(await prep.progress(t.id, 'לפני'), { done: 1, total: 2 });
-    assertEqual(await prep.progress(t.id, 'בדרך'), { done: 0, total: 1 });
+    await prep.saveTask(t.id, { stage: 'before', title: 'א', done: true });
+    await prep.saveTask(t.id, { stage: 'before', title: 'ב' });
+    await prep.saveTask(t.id, { stage: 'during', title: 'ג' });
+    assertEqual(await prep.progress(t.id, 'before'), { done: 1, total: 2 });
+    assertEqual(await prep.progress(t.id, 'during'), { done: 0, total: 1 });
   });
 
   s.test('הקטלוג נטען אופליין — קובץ סטטי מקומי בלי תלות ברשת', async () => {

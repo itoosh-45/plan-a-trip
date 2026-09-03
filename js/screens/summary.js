@@ -1,6 +1,6 @@
 import * as trips from '../trips.js';
 import * as money from '../money.js';
-import { el, card, toast, fmtMoney, fmtDate } from '../ui.js';
+import { el, card, icon, fmtMoney, fmtDateRange } from '../ui.js';
 
 let chartInstance = null;
 
@@ -8,91 +8,127 @@ function renderPie(canvas, rows) {
   if (!window.Chart) return;
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
   chartInstance = new window.Chart(canvas, {
-    type: 'pie',
+    type: 'doughnut',
     data: {
       labels: rows.map(r => r.name),
-      datasets: [{ data: rows.map(r => r.amount), backgroundColor: rows.map(r => r.color) }],
+      datasets: [{ data: rows.map(r => r.amount), backgroundColor: rows.map(r => r.color), borderWidth: 0 }],
     },
     options: {
-      plugins: { legend: { position: 'bottom', labels: { color: '#000' } } },
+      cutout: '58%',
+      plugins: { legend: { display: false } },
       responsive: true,
     },
   });
 }
 
+function statTile(label, value, tone = '') {
+  return el('div', {
+    style: `flex:1; min-width:0; padding:12px; border-radius:var(--radius-control);
+            background:${tone || 'var(--color-surface-2)'}`,
+  }, [
+    el('div', { class: 'sub', style: 'margin:0', text: label }),
+    el('div', { class: 'num', style: 'font-size:20px; font-weight:700; margin-block-start:4px', text: value }),
+  ]);
+}
+
 export async function mount(host, tripId) {
   if (!tripId) {
-    host.append(card([el('div', { class: 'dim', text: 'צרו טיול כדי לראות סיכום.' })], 'card-gap'));
+    host.append(card([
+      el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'אין עדיין טיול' }),
+      el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי לראות סיכום.' }),
+    ], 'card-gap'));
     return;
   }
 
-  const migrated = await money.migrateMissingRates(tripId);
-  if (migrated.fixed) {
-    toast(`הושלם שער עבור ${migrated.fixed} פריטים ישנים`, 'success');
-  }
-
-  const [trip] = (await trips.listTrips()).filter(t => t.id === tripId);
-  const homeCurrency = trip?.homeCurrency || 'ILS';
-  const sum = await money.summary(tripId);
+  const [trip, sum, planned] = await Promise.all([
+    trips.getTrip(tripId), money.tripTotals(tripId), money.plannedTotal(tripId),
+  ]);
+  const c = trip.currency;
 
   host.append(card([
-    el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'סיכום כספי' }),
-    el('div', { style: 'display:flex; justify-content:space-between' }, [
-      el('span', { class: 'dim', text: 'מתוכנן' }),
-      el('span', { class: 'num', text: fmtMoney(sum.totalPlanned, homeCurrency) }),
+    el('div', { style: 'font-weight:700; font-size:18px', text: trip.name }),
+    trip.startDate
+      ? el('div', { class: 'sub', text: fmtDateRange(trip.startDate, trip.endDate) })
+      : null,
+    el('div', { style: 'display:flex; gap:8px; margin-block-start:12px' }, [
+      statTile('סך הוצאות', fmtMoney(sum.total, c)),
+      statTile(
+        sum.overCeiling ? 'חריגה מהתקרה' : 'נותר מהתקרה',
+        fmtMoney(Math.abs(sum.remaining), c),
+        sum.overCeiling
+          ? 'color-mix(in srgb, var(--color-danger) 12%, transparent)'
+          : 'color-mix(in srgb, var(--color-success) 12%, transparent)',
+      ),
     ]),
-    el('div', { style: 'display:flex; justify-content:space-between; margin-block-start:4px' }, [
-      el('span', { class: 'dim', text: 'שולם בפועל' }),
-      el('span', { class: 'num', text: fmtMoney(sum.totalPaid, homeCurrency) }),
-    ]),
-    el('div', { style: 'display:flex; justify-content:space-between; margin-block-start:4px; font-weight:700' }, [
-      el('span', { text: 'יתרה מהתקציב' }),
-      el('span', {
-        class: 'num',
-        style: sum.balance < 0 ? 'color:var(--color-danger)' : '',
-        text: fmtMoney(sum.balance, homeCurrency),
-      }),
+    el('div', { style: 'display:flex; gap:8px; margin-block-start:8px' }, [
+      statTile('מתוכנן במסלול', fmtMoney(planned, c)),
+      statTile('מזומן בארנק', fmtMoney(sum.cashInWallet, c)),
     ]),
   ], 'card-gap'));
 
   if (sum.byCategory.length) {
-    const canvas = el('canvas', { style: 'max-height:260px' });
+    const canvas = el('canvas', { style: 'max-height:220px' });
     host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'חלוקה לפי קטגוריה' }),
+      el('div', { style: 'font-weight:700; margin-block-end:12px', text: 'פילוח לפי קטגוריה' }),
       canvas,
+      ...sum.byCategory.map(row => el('div', { class: 'row' }, [
+        el('span', { class: 'swatch', style: `background:${row.color}` }),
+        el('span', { class: 'grow' }, [
+          el('span', { style: 'display:block', text: row.name }),
+          el('span', { class: 'sub',
+            text: `${Math.round((row.amount / (sum.total || 1)) * 100)}% מסך ההוצאות` }),
+        ]),
+        el('span', { class: 'num', style: 'font-weight:700', text: fmtMoney(row.amount, c) }),
+      ])),
+      el('div', { class: 'sub', style: 'margin-block-start:8px',
+        text: 'משיכות המזומן מתפרקות כאן לפי ההוצאות במזומן שנרשמו בפועל. מה שטרם הוצא מופיע כ"מזומן בארנק".' }),
     ], 'card-gap'));
     renderPie(canvas, sum.byCategory);
   }
 
-  if (sum.byMethod.length) {
-    const labels = { cash: 'מזומן', credit: 'אשראי', transfer: 'העברה' };
-    host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'מזומן מול אשראי' }),
-      ...sum.byMethod.map(m => el('div', {
-        class: 'hairline', style: 'display:flex; justify-content:space-between; padding-block:8px',
-      }, [
-        el('span', { text: labels[m.method] || m.method }),
-        el('span', { class: 'num', text: fmtMoney(m.amount, homeCurrency) }),
-      ])),
-    ], 'card-gap'));
-  }
-
-  if (sum.bigTransactions.length) {
-    host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'העסקאות הגדולות' }),
-      ...sum.bigTransactions.map(tx => el('div', {
-        class: 'hairline', style: 'display:flex; justify-content:space-between; padding-block:8px',
-      }, [
-        el('span', { style: 'flex:1; overflow-wrap:anywhere' }, [
-          el('div', { text: tx.title }),
-          el('div', { class: 'dim', style: 'font-size:13px', text: fmtDate(tx.date) }),
+  host.append(card([
+    el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'הוצאות לפי יעד' }),
+    ...sum.bySegment.map(seg => {
+      const pct = seg.allocation ? Math.min(Math.round((seg.amount / seg.allocation) * 100), 100) : 0;
+      return el('div', { style: 'padding-block:12px; border-block-start:1px solid var(--color-hairline)' }, [
+        el('div', { style: 'display:flex; align-items:center; gap:8px' }, [
+          el('span', { class: 'grow', style: 'font-weight:700', text: seg.city }),
+          seg.allocation
+            ? el('span', { class: `pill ${seg.over ? 'over' : 'ok'}`,
+                text: seg.over ? 'חריגה' : 'בתקציב' })
+            : el('span', { class: 'sub', text: 'ללא הקצאה' }),
         ]),
-        el('span', { class: 'num', style: 'font-weight:700', text: fmtMoney(tx.amount, homeCurrency) }),
-      ])),
-    ], 'card-gap'));
-  }
+        el('div', { class: 'bar', style: 'margin-block-start:8px' }, [
+          el('span', { class: seg.over ? 'over' : '', style: `width:${seg.over ? 100 : pct}%` }),
+        ]),
+        el('div', { class: 'sub', style: 'display:flex; justify-content:space-between; margin-block-start:6px' }, [
+          el('span', { class: 'num', text: fmtMoney(seg.amount, c) }),
+          el('span', { class: 'num',
+            text: seg.allocation ? `מתוך ${fmtMoney(seg.allocation, c)}` : '' }),
+        ]),
+      ]);
+    }),
+  ], 'card-gap'));
 
-  if (!sum.byCategory.length && !sum.bigTransactions.length) {
-    host.append(card([el('div', { class: 'dim', text: 'אין עדיין הוצאות לסיכום.' })], 'card-gap'));
-  }
+  host.append(card([
+    el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'תקציב' }),
+    el('div', { class: 'row' }, [
+      el('span', { class: 'grow dim', text: 'תקרה' }),
+      el('span', { class: 'num', text: fmtMoney(sum.ceiling, c) }),
+    ]),
+    el('div', { class: 'row' }, [
+      el('span', { class: 'grow dim', text: 'הוקצה ליעדים' }),
+      el('span', { class: 'num', text: fmtMoney(sum.allocated, c) }),
+    ]),
+    el('div', { class: 'row' }, [
+      el('span', { class: 'grow dim', text: 'לא הוקצה' }),
+      el('span', { class: 'num', text: fmtMoney(sum.unallocated, c) }),
+    ]),
+    sum.overCeiling
+      ? el('div', { class: 'toast error', style: 'margin-block-start:12px' }, [
+          el('span', { html: icon('alert') }),
+          el('span', { text: ` ההוצאות עברו את התקרה ב-${fmtMoney(-sum.remaining, c)}` }),
+        ])
+      : null,
+  ], 'card-gap'));
 }

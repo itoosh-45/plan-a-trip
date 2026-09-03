@@ -72,14 +72,17 @@ export function confirmDanger({ title, body, confirmLabel = 'מחק' }) {
 }
 
 const MONEY = new Map();
+/** אגורות מוצגות רק בסכומים קטנים. בסכום גדול הן רעש. */
 export function fmtMoney(amount, currency = 'ILS') {
   if (amount === null || amount === undefined || Number.isNaN(amount)) return '—';
-  if (!MONEY.has(currency)) {
-    MONEY.set(currency, new Intl.NumberFormat('he-IL', {
-      style: 'currency', currency, maximumFractionDigits: 2, minimumFractionDigits: 0,
+  const digits = Math.abs(amount) >= 100 ? 0 : 2;
+  const key = `${currency}|${digits}`;
+  if (!MONEY.has(key)) {
+    MONEY.set(key, new Intl.NumberFormat('he-IL', {
+      style: 'currency', currency, maximumFractionDigits: digits, minimumFractionDigits: 0,
     }));
   }
-  return MONEY.get(currency).format(amount);
+  return MONEY.get(key).format(amount);
 }
 
 export function fmtDate(iso) {
@@ -112,4 +115,34 @@ export function datesBetween(fromIso, toIso) {
     t += 86400000;
   }
   return out;
+}
+
+/**
+ * שדה סכום עם דרופדאון מטבע לצדו. מוחזר יחד עם read() כדי שאף מסך לא יצטרך
+ * לדעת איך השדה בנוי — זו הצורה היחידה של הזנת סכום באפליקציה.
+ */
+export function amountField({ amount = '', currency = 'ILS', currencies = ['ILS'] } = {}) {
+  const value = el('input', {
+    class: 'field', type: 'number', inputmode: 'decimal', step: '0.01',
+    value: amount === null || amount === undefined ? '' : amount, 'aria-label': 'סכום',
+  });
+  const list = currencies.includes(currency) ? currencies : [currency, ...currencies];
+  const pick = el('select', {
+    class: 'field', style: 'max-width:110px', 'aria-label': 'מטבע',
+  }, list.map(c => el('option', { value: c, selected: c === currency, text: c })));
+
+  return {
+    node: el('div', { style: 'display:flex; gap:8px' }, [value, pick]),
+    input: value,
+    read: () => ({
+      amount: value.value === '' ? undefined : Number(value.value),
+      currency: pick.value,
+    }),
+  };
+}
+
+/** המרה לשקלים בטקסט משני. מטבע שהוא כבר שקל אינו מקבל המרה. */
+export function ilsNote(amount, currency, rateToILS) {
+  if (!amount || !currency || currency === 'ILS' || !rateToILS) return null;
+  return el('div', { class: 'sub num', text: `≈ ${fmtMoney(amount * rateToILS, 'ILS')}` });
 }

@@ -97,15 +97,15 @@ body {
 
 .bar { height: 8px; border-radius: 999px; background: var(--color-hairline); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--color-accent); }
-.bar.warn > span   { background: var(--color-warning); }
-.bar.over > span   { background: var(--color-danger); }
+.bar.warn > span, .bar > span.warn { background: var(--color-warning); }
+.bar.over > span, .bar > span.over { background: var(--color-danger); }
 
 #nav {
   position: fixed;
   inset-inline: 0;
   inset-block-end: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: var(--color-surface);
   border-block-start: 1px solid var(--color-border);
   padding-block-end: env(safe-area-inset-bottom);
@@ -179,4 +179,204 @@ body {
 @media (prefers-reduced-motion: no-preference) {
   .sheet { animation: sheet-in 200ms ease-out; }
   @keyframes sheet-in { from { transform: translateY(12px); opacity: 0; } }
+}
+
+/* ---- הדר עליון: בורר הטיול הפעיל + כניסה להגדרות ---- */
+#topbar {
+  display: block;
+  padding: 12px var(--space-screen-x) 0;
+}
+.topbar-row { display: flex; align-items: center; gap: 8px; }
+.topbar-row .field { flex: 1; font-weight: 700; }
+
+/* ---- שורת תאריכים: 75% מרוחב המסך, ממורכזת ---- */
+.date-row {
+  width: var(--date-row-width);
+  margin-inline: auto;
+  display: flex;
+  gap: 8px;
+}
+.date-row > * { flex: 1; min-width: 0; }
+
+/* ---- כרטיס טיול (מסך "טיולים" בהגדרות) ---- */
+.trip-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-stamp);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.trip-card-head {
+  position: relative;
+  background: var(--gradient-trip);
+  color: #fff;
+  padding: 20px var(--space-card-p);
+  min-height: 108px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  text-align: start;
+}
+.trip-card-head h3 { margin: 0; font-size: 24px; font-weight: 700; }
+.trip-card-head .dates { margin-block-start: 4px; font-size: 15px; opacity: 0.82; }
+.trip-card-edit {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-end: 12px;
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff;
+  cursor: pointer;
+}
+.trip-card-currency {
+  position: absolute;
+  inset-block-start: 58px;
+  inset-inline-end: 12px;
+  padding: 6px 12px;
+  border-radius: var(--radius-control);
+  background: rgba(0, 0, 0, 0.32);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.trip-card-body {
+  padding: var(--space-card-p);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.trip-card-body .total { font-size: 24px; font-weight: 700; }
+.trip-card[aria-current="true"] { outline: 2px solid var(--color-accent); }
+
+/* ---- דחיפות ברשימת ההכנה ---- */
+.zone-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-block: 14px 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-dim);
+}
+.zone-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+.task {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-block-start: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--urgency, var(--color-accent)) 8%, var(--color-surface));
+  touch-action: pan-y;
+}
+.task[data-urgency="critical"] { --urgency: var(--urgency-critical); }
+.task[data-urgency="important"] { --urgency: var(--urgency-important); }
+.task[data-urgency="normal"] { --urgency: var(--urgency-normal); }
+.task.dragging { opacity: 0.55; }
+.task .grip {
+  min-width: 26px;
+  color: var(--color-text-dim);
+  cursor: grab;
+  touch-action: none;
+}
+.task .icon-btn { min-width: 32px; }
+.task .title {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.task.done .title { text-decoration: line-through; color: var(--color-text-dim); }
+
+.tick {
+  position: relative;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-block-start: 2px;
+  border-radius: 999px;
+  border: 2px solid var(--urgency, var(--color-accent));
+  background: transparent;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+/* אזור המגע נשאר 44px גם כשהעיגול קטן */
+.tick::after { content: ''; position: absolute; inset: -8px; }
+.tick svg { opacity: 0; transform: scale(0.6); transition: opacity 160ms ease, transform 160ms ease; }
+.tick[aria-pressed="true"] { background: var(--urgency, var(--color-accent)); }
+.tick[aria-pressed="true"] svg { opacity: 1; transform: scale(1); }
+@media (prefers-reduced-motion: reduce) {
+  .tick, .tick svg { transition: none; }
+}
+
+/* ---- קבוצות ומחווני תקציב ---- */
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--touch-min);
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pill.ok   { background: color-mix(in srgb, var(--color-success) 12%, transparent); color: var(--color-success); }
+.pill.over { background: color-mix(in srgb, var(--color-danger) 12%, transparent);  color: var(--color-danger); }
+.pill.warn { background: color-mix(in srgb, var(--color-warning) 14%, transparent); color: var(--color-warning); }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-block: 10px;
+}
+.row + .row { border-block-start: 1px solid var(--color-hairline); }
+.row .grow { flex: 1; min-width: 0; }
+.sub { font-size: 13px; color: var(--color-text-dim); margin-block-start: 2px; overflow-wrap: anywhere; }
+.cat-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
