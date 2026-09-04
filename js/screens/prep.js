@@ -18,15 +18,16 @@ const groupKey = (stage, category) => `${stage}|${category}`;
 // ---------- טופס משימה ----------
 
 async function openTaskSheet(tripId, existing, stage, category) {
-  const [segs, categories] = await Promise.all([
+  const [segs, categories, lists] = await Promise.all([
     it.listSegments(tripId),
     prep.categoriesFor(existing?.stage || stage || 'before'),
+    prep.listsFor(tripId),
   ]);
 
   const title = el('input', { class: 'field', type: 'text', value: existing?.title || '' });
   const urgency = el('select', { class: 'field' }, Object.entries(prep.URGENCY).map(([k, v]) =>
     el('option', { value: k, selected: (existing?.urgency || 'normal') === k, text: v })));
-  const stageSel = el('select', { class: 'field' }, Object.entries(prep.STAGES).map(([k, v]) =>
+  const stageSel = el('select', { class: 'field' }, Object.entries(lists).map(([k, v]) =>
     el('option', { value: k, selected: (existing?.stage || stage || 'before') === k, text: v })));
 
   const chosenCategory = existing?.category || category || prep.OTHER;
@@ -81,9 +82,9 @@ async function openTaskSheet(tripId, existing, stage, category) {
 }
 
 /** הוספה לרשימה: ידנית או מהקטלוג. נפתח מהכפתור שליד כותרת השלב. */
-function openAddSheet(tripId, stage) {
+function openAddSheet(tripId, stage, label) {
   const s = sheet({
-    title: `הוספה ל${prep.STAGES[stage]}`,
+    title: `הוספה ל${label}`,
     body: el('div', {}, [
       el('button', {
         class: 'btn btn-secondary btn-block', style: 'margin-block-start:8px',
@@ -228,7 +229,7 @@ export function openCatalogSheet(tripId, stage) {
       el('button', { class: 'btn btn-primary btn-block', text: 'הוסף נבחרים', onClick: async () => {
         const items = [...selected.values()];
         if (!items.length) { s.close(); return; }
-        const added = await prep.addFromCatalog(tripId, items);
+        const added = await prep.addFromCatalog(tripId, items, stage);
         toast(added.length === 1 ? 'נוספה משימה אחת' : `נוספו ${added.length} משימות`, 'success');
         s.close();
         refresh();
@@ -282,7 +283,10 @@ export function openCatalogSheet(tripId, stage) {
     }
 
     const allPhases = await catalog.phases();
-    const phases = stage ? allPhases.filter(p => prep.STAGE_BY_PHASE[p] === stage) : allPhases;
+    // רשימה בשם חופשי אינה שייכת לשלב, ולכן כל הקטלוג פתוח בפניה
+    const phases = prep.STAGES[stage]
+      ? allPhases.filter(p => prep.STAGE_BY_PHASE[p] === stage)
+      : allPhases;
 
     if (!view.phase) {
       body.append(...phases.map(p => el('button', {
@@ -321,6 +325,7 @@ export function openCatalogSheet(tripId, stage) {
 
 function stageHeader(stage, label, tasks, isOpen, tripId) {
   const done = tasks.filter(t => t.done).length;
+  const isCustom = !prep.STAGES[stage];
   return el('div', { style: 'display:flex; align-items:center; gap:4px' }, [
     el('button', {
       class: 'group-head', 'aria-expanded': String(isOpen),
@@ -338,9 +343,55 @@ function stageHeader(stage, label, tasks, isOpen, tripId) {
     ]),
     el('button', {
       class: 'icon-btn', 'aria-label': `הוסף פריט ל${label}`,
-      html: icon('plus'), onClick: () => openAddSheet(tripId, stage),
+      html: icon('plus'), onClick: () => openAddSheet(tripId, stage, label),
     }),
+    isCustom
+      ? el('button', {
+          class: 'icon-btn', style: 'color:var(--color-text-dim)',
+          'aria-label': `מחק את הרשימה ${label}`,
+          html: icon('trash'), onClick: () => removeListFlow(tripId, stage, label, tasks.length),
+        })
+      : null,
   ]);
+}
+
+async function removeListFlow(tripId, listId, label, count) {
+  const ok = await confirmDanger({
+    title: `למחוק את "${label}"?`,
+    body: count
+      ? `${count} פריטים ברשימה יימחקו יחד איתה. פריטים שהגיעו מהקטלוג יחזרו להיות זמינים בו.`
+      : 'הרשימה ריקה ותימחק.',
+    confirmLabel: 'מחק רשימה',
+  });
+  if (!ok) return;
+  await prep.removeList(tripId, listId);
+  toast('הרשימה נמחקה', 'success');
+  refresh();
+}
+
+function openNewListSheet(tripId) {
+  const name = el('input', { class: 'field', type: 'text', placeholder: 'למשל: ציוד סקי לחרמון' });
+  const s = sheet({
+    title: 'רשימה חדשה',
+    body: el('div', {}, [
+      el('div', { class: 'field-row' }, [
+        el('label', { class: 'field-label', text: 'שם הרשימה' }), name,
+      ]),
+      el('p', { class: 'sub', text: 'הרשימה נוספת לצד לפני הטיול, במהלך השהייה ובחזרה, ואפשר למלא אותה ידנית או מכל הקטלוג.' }),
+    ]),
+    actions: [
+      el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
+      el('button', { class: 'btn btn-primary btn-block', text: 'צור', onClick: async () => {
+        try {
+          const list = await prep.addList(tripId, name.value);
+          openStages.add(list.id);
+          toast('הרשימה נוצרה', 'success');
+          s.close();
+          refresh();
+        } catch (err) { toast(err.message, 'error'); }
+      } }),
+    ],
+  });
 }
 
 export async function mount(host, tripId) {
@@ -352,8 +403,8 @@ export async function mount(host, tripId) {
     return;
   }
 
-  const [trip, segs, all] = await Promise.all([
-    trips.getTrip(tripId), it.listSegments(tripId), prep.listTasks(tripId),
+  const [trip, segs, all, lists] = await Promise.all([
+    trips.getTrip(tripId), it.listSegments(tripId), prep.listTasks(tripId), prep.listsFor(tripId),
   ]);
   const currency = trip?.currency || 'ILS';
 
@@ -368,7 +419,7 @@ export async function mount(host, tripId) {
     })),
   ]));
 
-  for (const [stage, label] of Object.entries(prep.STAGES)) {
+  for (const [stage, label] of Object.entries(lists)) {
     const stageTasks = all.filter(t => t.stage === stage);
     const isOpen = openStages.has(stage);
     const pct = stageTasks.length
@@ -429,4 +480,10 @@ export async function mount(host, tripId) {
 
     host.append(card(body, 'card-gap'));
   }
+
+  host.append(el('button', {
+    class: 'btn btn-tertiary btn-block card-gap',
+    html: `${icon('plus')}<span>רשימה חדשה</span>`,
+    onClick: () => openNewListSheet(tripId),
+  }));
 }

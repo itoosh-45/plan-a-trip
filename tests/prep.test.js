@@ -201,5 +201,73 @@ export default async function () {
     assertTrue(!(await prep.usedCatalogIds(b.id)).has('p0001'), 'ההסתרה דלפה בין טיולים');
   });
 
+  // ---- רשימות בשם חופשי ----
+
+  s.test('רשימה חדשה נוספת לשלושת השלבים הקבועים', async () => {
+    const t = await freshTrip();
+    const list = await prep.addList(t.id, 'ציוד סקי');
+    const lists = await prep.listsFor(t.id);
+    assertEqual(Object.keys(lists), ['before', 'during', 'after', list.id]);
+    assertEqual(lists[list.id], 'ציוד סקי');
+  });
+
+  s.test('רשימה בלי שם, ורשימה בשם שכבר קיים, נדחות בעברית', async () => {
+    const t = await freshTrip();
+    await prep.addList(t.id, 'ציוד סקי');
+    await assertThrows(() => prep.addList(t.id, '   '), 'רשימה בלי שם נוצרה');
+    await assertThrows(() => prep.addList(t.id, 'ציוד סקי'), 'רשימה כפולה נוצרה');
+  });
+
+  s.test('משימה יכולה לשבת ברשימה בשם חופשי', async () => {
+    const t = await freshTrip();
+    const list = await prep.addList(t.id, 'ציוד סקי');
+    await prep.saveTask(t.id, { stage: list.id, category: 'אריזה', title: 'קסדה' });
+    const rows = await prep.listTasks(t.id, list.id);
+    assertEqual(rows.map(x => x.title), ['קסדה']);
+  });
+
+  s.test('שלב שאינו קיים בטיול נדחה', async () => {
+    const t = await freshTrip();
+    await assertThrows(() => prep.saveTask(t.id, { stage: 'list-לא-קיים', title: 'א' }));
+  });
+
+  s.test('רשימה בשם חופשי פתוחה לכל מדורי הקטלוג', async () => {
+    const t = await freshTrip();
+    const list = await prep.addList(t.id, 'ציוד סקי');
+    const cats = await prep.categoriesFor(list.id);
+    assertTrue(cats.includes('אריזה'), 'מדור של לפני חסר');
+    assertTrue(cats.includes('חזרה'), 'מדור של בחזרה חסר');
+    assertEqual(cats[cats.length - 1], prep.OTHER);
+  });
+
+  s.test('הוספה מהקטלוג לרשימה בשם חופשי נוחתת בה ולא בשלב של הקטלוג', async () => {
+    const t = await freshTrip();
+    const list = await prep.addList(t.id, 'ציוד סקי');
+    await prep.addFromCatalog(t.id, [
+      { id: 'p0001', phase: 'לפני', section: 'תכנון', text: 'דרכון', priority: 'חובה' },
+    ], list.id);
+    const [task] = await prep.listTasks(t.id);
+    assertEqual(task.stage, list.id);
+    assertEqual(task.category, 'תכנון', 'הקטגוריה מהקטלוג לא נשמרה');
+  });
+
+  s.test('מחיקת רשימה מוחקת את המשימות שבה ומחזירה אותן לקטלוג', async () => {
+    const t = await freshTrip();
+    const list = await prep.addList(t.id, 'ציוד סקי');
+    await prep.addFromCatalog(t.id, [
+      { id: 'p0001', phase: 'לפני', section: 'תכנון', text: 'דרכון', priority: 'חובה' },
+    ], list.id);
+    await prep.saveTask(t.id, { stage: 'before', title: 'נשארת' });
+    await prep.removeList(t.id, list.id);
+    assertEqual((await prep.listTasks(t.id)).map(x => x.title), ['נשארת']);
+    assertTrue(!(await prep.usedCatalogIds(t.id)).has('p0001'), 'הפריט לא חזר לקטלוג');
+    assertEqual(Object.keys(await prep.listsFor(t.id)), ['before', 'during', 'after']);
+  });
+
+  s.test('שלב קבוע אינו ניתן למחיקה', async () => {
+    const t = await freshTrip();
+    await assertThrows(() => prep.removeList(t.id, 'before'));
+  });
+
   await s.done();
 }
