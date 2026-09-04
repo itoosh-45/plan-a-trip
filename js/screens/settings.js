@@ -5,6 +5,7 @@ import * as cur from '../currencies.js';
 import * as money from '../money.js';
 import * as excel from '../excel.js';
 import * as backup from '../backup.js';
+import * as catalog from '../catalog.js';
 import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtDateRange } from '../ui.js';
 import { refresh, setActiveTrip, navigate } from '../app.js';
 import { openTripWizard } from '../onboarding.js';
@@ -14,9 +15,11 @@ const CATEGORY_ICONS = [
   'transfer', 'meeting', 'gear', 'cash', 'card', 'other',
 ];
 
-function section(title, children) {
+/** כל סקשן בהגדרות נראה אותו דבר: כותרת, משפט הסבר אחד, ואז התוכן. */
+function section(title, note, children) {
   return card([
     el('h2', { class: 'card-title', text: title }),
+    note ? el('p', { class: 'sub', style: 'margin:0 0 12px', text: note }) : null,
     ...[].concat(children),
   ], 'card-gap');
 }
@@ -82,25 +85,80 @@ async function removeTripFlow(trip) {
 
 function currencySection(active) {
   const chosen = new Set(active);
-  const chips = el('div', { style: 'display:flex; flex-wrap:wrap; gap:8px' },
-    Object.keys(cur.NAMES).map(code => {
-      const chip = el('button', {
-        class: 'chip', 'aria-pressed': String(chosen.has(code)),
-        text: cur.label(code),
-        onClick: async () => {
-          if (code === 'ILS') { toast('השקל תמיד פעיל', 'warning'); return; }
-          if (chosen.has(code)) chosen.delete(code); else chosen.add(code);
-          chip.setAttribute('aria-pressed', String(chosen.has(code)));
-          await cur.setActive([...chosen]);
-        },
-      });
-      return chip;
-    }));
+  const available = Object.keys(cur.NAMES).filter(c => !chosen.has(c));
 
-  return section('מטבעות פעילים', [
-    el('p', { class: 'dim', style: 'margin:0 0 12px',
-      text: 'רק המטבעות שנבחרו כאן מופיעים בדרופדאון שליד כל שדה סכום.' }),
-    chips,
+  const picker = el('select', { class: 'field', 'aria-label': 'הוספת מטבע' }, [
+    el('option', { value: '', text: available.length ? 'בחרו מטבע להוספה…' : 'כל המטבעות כבר פעילים' }),
+    ...available.map(code => el('option', { value: code, text: cur.label(code) })),
+  ]);
+  picker.addEventListener('change', async () => {
+    if (!picker.value) return;
+    try {
+      await cur.setActive([...chosen, picker.value]);
+      refresh();
+    } catch (err) { toast(err.message, 'error'); }
+  });
+
+  const rows = [...chosen].map(code => el('div', { class: 'row' }, [
+    el('span', { class: 'grow row-title', text: cur.label(code) }),
+    code === 'ILS'
+      ? el('span', { class: 'sub', text: 'תמיד פעיל' })
+      : el('button', {
+          class: 'icon-btn', style: 'color:var(--color-danger)',
+          'aria-label': `הסר את ${code}`, html: icon('close'),
+          onClick: async () => {
+            try {
+              await cur.setActive([...chosen].filter(c => c !== code));
+              refresh();
+            } catch (err) { toast(err.message, 'error'); }
+          },
+        }),
+  ]));
+
+  return section(
+    'מטבעות פעילים',
+    'רק המטבעות שנבחרו כאן מופיעים בדרופדאון שליד כל שדה סכום. השקל תמיד פעיל.',
+    [picker, ...rows],
+  );
+}
+
+// ---------- פריטים מוסתרים מהקטלוג ----------
+
+async function hiddenCatalogSection() {
+  const [hidden, byId] = await Promise.all([catalog.hiddenIds(), catalog.byId()]);
+  const items = [...hidden].map(id => byId.get(id)).filter(Boolean);
+
+  const note = 'פריטים שהוסרו מהקטלוג ואינם מוצעים בשום טיול. החזרה לכאן מחזירה אותם לבורר הקטלוג.';
+  if (!items.length) {
+    return section('פריטים מוסתרים מהקטלוג', note, [
+      el('div', { class: 'sub', text: 'אין כרגע פריטים מוסתרים — הקטלוג מלא.' }),
+    ]);
+  }
+
+  return section('פריטים מוסתרים מהקטלוג', note, [
+    ...items.map(item => el('div', { class: 'row' }, [
+      el('span', { class: 'grow' }, [
+        el('span', { style: 'display:block', text: item.text }),
+        el('span', { class: 'sub', text: `${item.section} · ${item.topic}` }),
+      ]),
+      el('button', {
+        class: 'btn btn-tertiary', text: 'החזר לקטלוג',
+        onClick: async () => {
+          await catalog.unhide(item.id);
+          toast('הפריט חזר לקטלוג', 'success');
+          refresh();
+        },
+      }),
+    ])),
+    el('button', {
+      class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
+      text: `החזר את כל ${items.length} הפריטים`,
+      onClick: async () => {
+        await catalog.setHidden([]);
+        toast('כל הפריטים חזרו לקטלוג', 'success');
+        refresh();
+      },
+    }),
   ]);
 }
 
@@ -170,10 +228,10 @@ async function refreshRatesFlow(currencies) {
 function fxSection(currencies, known) {
   const foreign = currencies.filter(c => c !== 'ILS');
   if (!foreign.length) return null;
-  return section('שערי המרה', [
-    el('p', { class: 'dim', style: 'margin:0 0 12px',
-      text: 'כל השערים מול השקל. האפליקציה עובדת אופליין עם השערים הידניים.' }),
-    ...foreign.map(code => {
+  return section(
+    'שערי המרה',
+    'כל השערים מול השקל. האפליקציה עובדת אופליין עם השערים הידניים.',
+    [...foreign.map(code => {
       const r = known[code];
       return el('div', { class: 'row' }, [
         el('div', { class: 'grow' }, [
@@ -193,8 +251,8 @@ function fxSection(currencies, known) {
       class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
       html: `${icon('refresh')}<span>רענן שערים מהאינטרנט</span>`,
       onClick: () => refreshRatesFlow(foreign),
-    }),
-  ]);
+    })],
+  );
 }
 
 // ---------- קטגוריות ----------
@@ -365,6 +423,8 @@ export async function mount(host, tripId) {
   }
 
   host.append(el('h2', { class: 'screen-title', style: 'margin-block-start:16px', text: 'טיולים' }));
+  host.append(el('p', { class: 'sub', style: 'margin:0 0 12px',
+    text: 'לחיצה על כרטיס פותחת את הסיכום שלו. הטיול הפעיל הוא זה שכל שאר המסכים מציגים.' }));
   for (const t of all) host.append(tripCard(t, totals.get(t.id), t.id === tripId));
   host.append(el('button', {
     class: 'btn btn-primary btn-block card-gap',
@@ -382,8 +442,10 @@ export async function mount(host, tripId) {
 
   if (trip) {
     const cats = await trips.categories(trip.id);
-    host.append(section('קטגוריות', [
-      ...cats.map(c => el('div', { class: 'row' }, [
+    host.append(section(
+      'קטגוריות',
+      'הקטגוריות של הטיול הזה בלבד. כל הוצאה משויכת לאחת מהן, וכך נבנה פילוח הסיכום.',
+      [...cats.map(c => el('div', { class: 'row' }, [
         el('span', {
           class: 'cat-icon', html: icon(c.icon || 'other'),
           style: `background:color-mix(in srgb, ${c.color} 14%, transparent); color:${c.color}`,
@@ -407,36 +469,38 @@ export async function mount(host, tripId) {
         class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
         html: `${icon('plus')}<span>קטגוריה חדשה</span>`,
         onClick: () => openCategorySheet(trip.id, null),
-      }),
-    ]));
+      })],
+    ));
 
-    host.append(section('ייצוא וייבוא אקסל', [
-      el('p', { class: 'dim', style: 'margin:0 0 12px',
-        text: 'קובץ מעוצב עם 4 גיליונות: סיכום, מסלול, תקציב, הוצאות.' }),
-      el('div', { style: 'display:flex; gap:8px' }, [
+    host.append(section(
+      'ייצוא וייבוא אקסל',
+      'קובץ מעוצב עם 4 גיליונות: סיכום, מסלול, תקציב, הוצאות. הייבוא מחליף את המסלול וההוצאות של הטיול הזה בלבד.',
+      [el('div', { style: 'display:flex; gap:8px' }, [
         el('button', { class: 'btn btn-secondary btn-block', html: `${icon('download')}<span>ייצוא</span>`,
           onClick: () => exportExcel(trip) }),
         el('button', { class: 'btn btn-tertiary btn-block', html: `${icon('share')}<span>ייבוא</span>`,
           onClick: () => importExcel(trip) }),
-      ]),
-    ]));
+      ])],
+    ));
   }
 
-  host.append(section('גיבוי ושחזור', [
-    el('p', { class: 'dim', style: 'margin:0 0 12px',
-      text: 'קובץ JSON מלא של כל הטיולים. הגיבוי באחריותך ובלחיצת כפתור — לא אוטומטי.' }),
-    el('div', { style: 'display:flex; gap:8px' }, [
+  host.append(await hiddenCatalogSection());
+
+  host.append(section(
+    'גיבוי ושחזור',
+    'קובץ JSON מלא של כל הטיולים. הגיבוי באחריותך ובלחיצת כפתור — לא אוטומטי.',
+    [el('div', { style: 'display:flex; gap:8px' }, [
       el('button', { class: 'btn btn-secondary btn-block', html: `${icon('share')}<span>גיבוי עכשיו</span>`,
         onClick: runBackup }),
       el('button', { class: 'btn btn-danger btn-block', html: `${icon('refresh')}<span>שחזור מקובץ</span>`,
         onClick: runRestore }),
-    ]),
-  ]));
+    ])],
+  ));
 
-  host.append(section('מחיקת כל הנתונים', [
-    el('p', { class: 'dim', style: 'margin:0 0 12px',
-      text: 'מוחק את כל הטיולים, ההוצאות והשערים מהמכשיר הזה. הקטלוג נשאר.' }),
-    el('button', {
+  host.append(section(
+    'מחיקת כל הנתונים',
+    'מוחק את כל הטיולים, ההוצאות והשערים מהמכשיר הזה. הקטלוג נשאר.',
+    [el('button', {
       class: 'btn btn-danger btn-block', text: 'מחק הכול',
       onClick: async () => {
         const ok = await confirmDanger({
@@ -450,6 +514,6 @@ export async function mount(host, tripId) {
         toast('כל הנתונים נמחקו', 'success');
         setActiveTrip(null);
       },
-    }),
-  ]));
+    })],
+  ));
 }
