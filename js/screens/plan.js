@@ -44,7 +44,7 @@ function openSegmentSheet(trip, existing) {
       row('מדינה', country),
       el('label', { class: 'field-label', style: 'margin-block-start:12px', text: 'טווח התאריכים ביעד' }),
       range.node,
-      row(`הקצאת תקציב (${trip.currency})`, allocation),
+      row(`הקצאת תקציב (${cur.symbol(trip.currency)})`, allocation),
       el('p', { class: 'sub',
         text: 'התאריכים חייבים ליפול בתוך טווח הטיול, ואסור שיחפפו ליעד אחר.' }),
     ]),

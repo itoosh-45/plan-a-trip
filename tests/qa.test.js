@@ -63,9 +63,14 @@ export default async function () {
 
   // ---- כספים ----
 
-  s.test('סכום אפס נשמר ואינו משנה את הסיכום', async () => {
+  s.test('סכום אפס נדחה בכל שלושת סוגי הרשומות', async () => {
     const { trip, gen } = await tripWith();
-    await expenses.saveExpense(trip.id, { amount: 0, segmentId: gen.id });
+    for (const kind of ['expense', 'withdraw', 'cashSpend']) {
+      await assertThrows(
+        () => expenses.saveExpense(trip.id, { kind, amount: 0, segmentId: gen.id }),
+        `סכום אפס נשמר בסוג ${kind}`
+      );
+    }
     assertEqual((await money.tripTotals(trip.id)).total, 0);
   });
 

@@ -4,8 +4,11 @@
     {
       "name": "trip-planner",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8123"],
-      "port": 8123
+      "runtimeArgs": [
+        "dev-server.py",
+        "8124"
+      ],
+      "port": 8124
     }
   ]
 }

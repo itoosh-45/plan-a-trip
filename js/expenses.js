@@ -16,7 +16,7 @@ export async function saveExpense(tripId, exp) {
   if (!KINDS[kind]) throw new Error(`סוג רשומה לא מוכר: ${kind}`);
 
   const amount = Number(exp.amount);
-  if (!Number.isFinite(amount) || amount < 0) throw new Error('הסכום חייב להיות מספר אפס ומעלה');
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('הסכום חייב להיות גדול מאפס');
   if (!exp.segmentId) throw new Error('יש לשייך את ההוצאה ליעד או למקטע "כללי"');
 
   const currency = (exp.currency || 'ILS').toUpperCase();

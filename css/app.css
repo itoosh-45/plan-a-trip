@@ -49,11 +49,23 @@ html, body {
   overflow-wrap: anywhere;
 }
 
+/* מבנה app-shell: הגוף אינו נגלל, ה-#screen גולל בתוכו, והניווט הוא פשוט
+   האלמנט האחרון בזרימה. זה מה שמונע מסרגל הכתובת המתקפל של הדפדפן להזיז
+   את הניווט תוך כדי גלילה. */
 body {
+  height: 100vh;
+  height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding-block-start: env(safe-area-inset-top);
 }
 
 #screen {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding-inline: var(--space-screen-x);
   padding-block-end: var(--space-screen-bottom);
 }
@@ -162,15 +174,12 @@ body {
 .bar.over > span, .bar > span.over { background: var(--color-danger); }
 
 #nav {
-  position: fixed;
-  inset-inline: 0;
-  inset-block-end: 0;
+  flex-shrink: 0;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   background: var(--color-surface);
   border-block-start: 1px solid var(--color-border);
   padding-block-end: env(safe-area-inset-bottom);
-  z-index: 20;
 }
 #nav button {
   display: flex;
@@ -214,7 +223,7 @@ body {
   position: fixed;
   inset-inline: var(--space-screen-x);
   inset-block-end: calc(var(--nav-height) + 16px + env(safe-area-inset-bottom));
-  z-index: 60;
+  z-index: 20;
   pointer-events: none;
 }
 .toast {

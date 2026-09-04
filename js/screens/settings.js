@@ -30,7 +30,7 @@ function tripCard(trip, totals, isActive) {
         class: 'trip-card-edit', 'aria-label': `ערוך את ${trip.name}`,
         html: icon('edit'), onClick: () => openTripWizard(trip),
       }),
-      el('span', { class: 'trip-card-currency', text: trip.currency }),
+      el('span', { class: 'trip-card-currency', text: cur.symbol(trip.currency) }),
       el('h3', { text: trip.name }),
       el('div', {
         class: 'dates',
@@ -86,7 +86,7 @@ function currencySection(active) {
     Object.keys(cur.NAMES).map(code => {
       const chip = el('button', {
         class: 'chip', 'aria-pressed': String(chosen.has(code)),
-        text: `${code} · ${cur.NAMES[code]}`,
+        text: cur.label(code),
         onClick: async () => {
           if (code === 'ILS') { toast('השקל תמיד פעיל', 'warning'); return; }
           if (chosen.has(code)) chosen.delete(code); else chosen.add(code);
@@ -149,7 +149,7 @@ async function refreshRatesFlow(currencies) {
       el('p', { class: 'dim', style: 'margin:0 0 12px',
         text: 'השערים יידרסו רק אחרי אישור. סכומים שכבר נרשמו אינם משתנים.' }),
       ...ok.map(([code, r]) => el('div', { class: 'row' }, [
-        el('span', { class: 'grow', text: `${code} · ${cur.NAMES[code] || ''}` }),
+        el('span', { class: 'grow', text: cur.label(code) }),
         el('span', { class: 'num', text: `${r.rate.toFixed(4)} ₪` }),
       ])),
       ...Object.entries(fetched).filter(([, r]) => !r.ok).map(([code]) =>
@@ -177,7 +177,7 @@ function fxSection(currencies, known) {
       const r = known[code];
       return el('div', { class: 'row' }, [
         el('div', { class: 'grow' }, [
-          el('div', { class: 'row-title', text: `${code} · ${cur.NAMES[code] || ''}` }),
+          el('div', { class: 'row-title', text: cur.label(code) }),
           el('div', { class: 'sub',
             text: r
               ? `1 ${code} = ${r.rate} ₪ · ${fxAge(r.ts)} (${r.source})${r.stale ? ' · ישן' : ''}`

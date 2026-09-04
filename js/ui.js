@@ -1,4 +1,5 @@
 import { ICONS } from './icons.js';
+import { symbol as currencySymbol } from './currencies.js';
 
 export function icon(name, cls = '') {
   const body = ICONS[name] || ICONS.other;
@@ -129,7 +130,9 @@ export function amountField({ amount = '', currency = 'ILS', currencies = ['ILS'
   const list = currencies.includes(currency) ? currencies : [currency, ...currencies];
   const pick = el('select', {
     class: 'field', style: 'max-width:110px', 'aria-label': 'מטבע',
-  }, list.map(c => el('option', { value: c, selected: c === currency, text: c })));
+  }, list.map(c => el('option', {
+    value: c, selected: c === currency, text: `${currencySymbol(c)} · ${c}`,
+  })));
 
   return {
     node: el('div', { style: 'display:flex; gap:8px' }, [value, pick]),

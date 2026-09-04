@@ -174,8 +174,8 @@ export async function parse(file) {
       return;
     }
     const n = Number(row['סכום']);
-    if (!Number.isFinite(n) || n < 0) {
-      errors.push(`שורה ${rowNum} בגיליון "הוצאות" — הסכום אינו מספר תקין`);
+    if (!Number.isFinite(n) || n <= 0) {
+      errors.push(`שורה ${rowNum} בגיליון "הוצאות" — הסכום חייב להיות מספר גדול מאפס`);
       return;
     }
     if (!row['יעד']) {
