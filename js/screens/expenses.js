@@ -63,7 +63,7 @@ async function openExpenseSheet(trip, existing, kind = 'expense') {
       row('יעד או מקטע', segment),
       activeKind === 'withdraw' ? null : row('קטגוריה', category),
       row('פירוט', note),
-      el('p', { class: 'dim', style: 'font-size:13px', text: hints[activeKind] }),
+      el('p', { class: 'sub', text: hints[activeKind] }),
     ]),
     actions: [
       existing
@@ -109,7 +109,7 @@ function walletCard(trip, balances, cashRows, cats, segs) {
       el('span', { class: 'cat-icon', html: icon('wallet'),
         style: 'background:var(--color-surface-2); color:var(--color-accent)' }),
       el('div', { class: 'grow' }, [
-        el('div', { style: 'font-weight:700', text: 'ארנק מזומן' }),
+        el('div', { class: 'row-title', text: 'ארנק מזומן' }),
         el('div', { class: 'sub', text: codes.length ? 'יתרה לכל מטבע' : 'עדיין לא נמשך מזומן' }),
       ]),
       el('button', {
@@ -123,7 +123,7 @@ function walletCard(trip, balances, cashRows, cats, segs) {
     body.push(el('div', { class: 'row' }, [
       el('span', { class: 'grow', text: code }),
       el('span', {
-        class: 'num', style: `font-weight:700; ${balances[code] < 0 ? 'color:var(--color-danger)' : ''}`,
+        class: 'num money', style: balances[code] < 0 ? 'color:var(--color-danger)' : null,
         text: fmtMoney(balances[code], code),
       }),
     ]));
@@ -169,7 +169,7 @@ function walletCard(trip, balances, cashRows, cats, segs) {
 export async function mount(host, tripId) {
   if (!tripId) {
     host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'אין עדיין טיול' }),
+      el('div', { class: 'empty-title', text: 'אין עדיין טיול' }),
       el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי לעקוב אחרי הוצאות.' }),
     ], 'card-gap'));
     return;
@@ -189,8 +189,7 @@ export async function mount(host, tripId) {
   host.append(card([
     el('div', { style: 'display:flex; align-items:baseline; justify-content:space-between' }, [
       el('span', { class: 'dim', text: `סה"כ הוצאות (${rows.filter(r => r.kind !== 'cashSpend').length})` }),
-      el('span', { class: 'num', style: 'font-size:24px; font-weight:700',
-        text: fmtMoney(totals.total, trip.currency) }),
+      el('span', { class: 'num money-lg', text: fmtMoney(totals.total, trip.currency) }),
     ]),
   ], 'card-gap'));
 
@@ -216,8 +215,8 @@ export async function mount(host, tripId) {
 
     host.append(card([
       el('div', { style: 'display:flex; align-items:center; gap:8px; margin-block-end:4px' }, [
-        el('span', { class: 'grow', style: 'font-weight:700; font-size:16px', text: seg.city }),
-        el('span', { class: 'num', style: 'font-weight:700', text: fmtMoney(stat.amount, trip.currency) }),
+        el('span', { class: 'grow row-title', text: seg.city }),
+        el('span', { class: 'num money', text: fmtMoney(stat.amount, trip.currency) }),
       ]),
       stat.allocation
         ? el('div', { class: 'sub' }, [
@@ -243,7 +242,7 @@ export async function mount(host, tripId) {
               text: `${r.kind === 'withdraw' ? KIND_LABEL.withdraw : c.name} · ${fmtDate(r.date)}` }),
           ]),
           el('span', { style: 'text-align:end' }, [
-            el('div', { class: 'num', style: 'font-weight:700', text: fmtMoney(r.amount, r.currency) }),
+            el('div', { class: 'num money', text: fmtMoney(r.amount, r.currency) }),
             ilsNote(r.amount, r.currency, r.rateToILS),
           ]),
         ]);

@@ -254,7 +254,7 @@ export function openCatalogSheet(tripId, stage) {
 
     body.append(backRow(() => { view.section = null; render(); }, view.section));
     for (const topic of await catalog.topics(view.phase, view.section)) {
-      body.append(el('div', { style: 'font-weight:700; margin-block-start:12px', text: topic }));
+      body.append(el('div', { class: 'card-title', style: 'margin-block-start:12px', text: topic }));
       body.append(...(await catalog.byTopic(view.phase, view.section, topic)).map(catalogRow));
     }
   }
@@ -267,7 +267,7 @@ export function openCatalogSheet(tripId, stage) {
 export async function mount(host, tripId) {
   if (!tripId) {
     host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'אין עדיין טיול' }),
+      el('div', { class: 'empty-title', text: 'אין עדיין טיול' }),
       el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי להתחיל.' }),
     ], 'card-gap'));
     return;
@@ -306,8 +306,8 @@ export async function mount(host, tripId) {
         html: icon('chevronDown'),
         style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : 90}deg)`,
       }),
-      el('span', { class: 'grow', style: 'font-weight:700; font-size:16px', text: label }),
-      el('span', { class: 'dim num', style: 'font-size:13px', text: `${done}/${tasks.length}` }),
+      el('span', { class: 'grow card-title', text: label }),
+      el('span', { class: 'sub num', text: `${done}/${tasks.length}` }),
     ]);
 
     const body = [head, el('div', { class: 'bar', style: 'margin-block-start:8px' }, [
@@ -320,7 +320,7 @@ export async function mount(host, tripId) {
         const inZone = tasks.filter(t => (t.urgency || 'normal') === zone);
         body.push(el('div', { class: 'zone-label' }, [
           el('span', { style: `color:var(--urgency-${zone})`, text: prep.URGENCY[zone] }),
-          el('span', { class: 'dim', style: 'font-weight:400', text: `${inZone.length}` }),
+          el('span', { class: 'dim', text: `${inZone.length}` }),
         ]));
         body.push(el('div', {
           'data-zone': zone,

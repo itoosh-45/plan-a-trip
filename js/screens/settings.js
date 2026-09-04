@@ -16,7 +16,7 @@ const CATEGORY_ICONS = [
 
 function section(title, children) {
   return card([
-    el('h2', { style: 'font-size:16px; font-weight:700; margin:0 0 12px', text: title }),
+    el('h2', { class: 'card-title', text: title }),
     ...[].concat(children),
   ], 'card-gap');
 }
@@ -177,7 +177,7 @@ function fxSection(currencies, known) {
       const r = known[code];
       return el('div', { class: 'row' }, [
         el('div', { class: 'grow' }, [
-          el('div', { style: 'font-weight:600', text: `${code} · ${cur.NAMES[code] || ''}` }),
+          el('div', { class: 'row-title', text: `${code} · ${cur.NAMES[code] || ''}` }),
           el('div', { class: 'sub',
             text: r
               ? `1 ${code} = ${r.rate} ₪ · ${fxAge(r.ts)} (${r.source})${r.stale ? ' · ישן' : ''}`
@@ -324,7 +324,7 @@ function runRestore() {
     const s = sheet({
       title: 'שחזור מגיבוי',
       body: el('div', {}, [
-        el('p', { style: 'color:var(--color-danger); font-weight:700; margin:0 0 12px',
+        el('p', { class: 'row-title', style: 'color:var(--color-danger); margin:0 0 12px',
           text: 'השחזור מוחק ומחליף את כל הנתונים הקיימים במכשיר הזה — כל הטיולים.' }),
         rows.length
           ? el('div', {}, rows.map(([store, n]) => el('div', { text: `${store}: ${n}` })))
@@ -364,7 +364,7 @@ export async function mount(host, tripId) {
     totals.set(t.id, { amount: sum.total, count: rows.filter(r => r.kind !== 'cashSpend').length });
   }
 
-  host.append(el('h2', { style: 'font-size:20px; font-weight:700; margin:16px 0 4px', text: 'טיולים' }));
+  host.append(el('h2', { class: 'screen-title', style: 'margin-block-start:16px', text: 'טיולים' }));
   for (const t of all) host.append(tripCard(t, totals.get(t.id), t.id === tripId));
   host.append(el('button', {
     class: 'btn btn-primary btn-block card-gap',

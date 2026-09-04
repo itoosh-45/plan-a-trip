@@ -45,7 +45,7 @@ function openSegmentSheet(trip, existing) {
       el('label', { class: 'field-label', style: 'margin-block-start:12px', text: 'טווח התאריכים ביעד' }),
       range.node,
       row(`הקצאת תקציב (${trip.currency})`, allocation),
-      el('p', { class: 'dim', style: 'font-size:13px',
+      el('p', { class: 'sub',
         text: 'התאריכים חייבים ליפול בתוך טווח הטיול, ואסור שיחפפו ליעד אחר.' }),
     ]),
     actions: [
@@ -101,7 +101,7 @@ async function openItemSheet(trip, seg, date, existing) {
       row('סוג', type), row('כותרת', title), row('תאריך', dateF), row('שעה', time),
       row('מיקום', place), row('הזמנה או קישור', ref), row('קטגוריה', category),
       row('עלות מתוכננת', planned.node), row('הערות', note),
-      el('p', { class: 'dim', style: 'font-size:13px',
+      el('p', { class: 'sub',
         text: 'זו עלות מתוכננת בלבד. כסף שיצא בפועל נרשם בטאב "הוצאות".' }),
     ]),
     actions: [
@@ -158,7 +158,7 @@ async function renderSegment(host, trip, seg) {
   host.append(card([
     el('div', { style: 'display:flex; align-items:flex-start; gap:8px' }, [
       el('div', { class: 'grow' }, [
-        el('div', { style: 'font-weight:700; font-size:18px',
+        el('div', { class: 'screen-title',
           text: seg.country ? `${seg.city}, ${seg.country}` : seg.city }),
         el('div', { class: 'sub',
           text: `${fmtDateRange(seg.startDate, seg.endDate)} · ${nightsBetween(seg.startDate, seg.endDate)} לילות` }),
@@ -182,8 +182,8 @@ async function renderSegment(host, trip, seg) {
       }, [
         el('span', { html: icon('chevronDown'),
           style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : 90}deg)` }),
-        el('span', { class: 'grow', style: 'font-weight:700', text: fmtDate(day) }),
-        el('span', { class: 'dim', style: 'font-size:13px',
+        el('span', { class: 'grow row-title', text: fmtDate(day) }),
+        el('span', { class: 'sub',
           text: dayItems.length ? `${dayItems.length} פריטים` : 'אין תכנון' }),
       ]),
       ...dayItems.map(i => el('button', {
@@ -218,7 +218,7 @@ async function renderSegment(host, trip, seg) {
   }
 
   host.append(card([
-    el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'צ׳קליסט ליעד' }),
+    el('div', { class: 'card-title', text: 'צ׳קליסט ליעד' }),
     segTasks.length
       ? el('div', {}, segTasks.map(t => el('div', { class: 'row' }, [
           el('button', {
@@ -259,7 +259,7 @@ async function renderSegment(host, trip, seg) {
 export async function mount(host, tripId) {
   if (!tripId) {
     host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'אין עדיין טיול' }),
+      el('div', { class: 'empty-title', text: 'אין עדיין טיול' }),
       el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי להתחיל לתכנן.' }),
     ], 'card-gap'));
     return;
@@ -278,7 +278,7 @@ export async function mount(host, tripId) {
   const budget = await trips.budgetSummary(tripId);
 
   host.append(card([
-    el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'תקציב הטיול' }),
+    el('div', { class: 'card-title', text: 'תקציב הטיול' }),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'תקרה' }),
       el('span', { class: 'num', text: fmtMoney(budget.ceiling, trip.currency) }),
@@ -288,7 +288,7 @@ export async function mount(host, tripId) {
       el('span', { class: 'num', text: fmtMoney(budget.allocated, trip.currency) }),
     ]),
     el('div', { class: 'row' }, [
-      el('span', { class: 'grow', style: 'font-weight:700', text: 'יתרה לא מוקצית' }),
+      el('span', { class: 'grow row-title', text: 'יתרה לא מוקצית' }),
       el('span', { class: `pill ${budget.over ? 'over' : 'ok'} num`,
         text: fmtMoney(budget.unallocated, trip.currency) }),
     ]),
@@ -307,7 +307,7 @@ export async function mount(host, tripId) {
         onClick: () => { openSegmentId = seg.id; openDay = null; refresh(); },
       }, [
         el('span', { class: 'grow' }, [
-          el('div', { style: 'font-weight:700; font-size:16px', text: seg.city }),
+          el('div', { class: 'row-title', text: seg.city }),
           el('div', { class: 'sub',
             text: seg.kind === 'general'
               ? 'הוצאות שאינן שייכות ליעד ספציפי'
