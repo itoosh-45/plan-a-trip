@@ -86,5 +86,42 @@ export default async function () {
     assertTrue(trek.some(x => x.text === 'שק שינה'), 'פריט טרקים חסר');
   });
 
+  // ---- רשימת ההסתרה שהגיעה מבעל המוצר ----
+
+  s.test('222 פריטים מוסתרים כברירת מחדל, בלי שאיש נגע בהגדרות', async () => {
+    await db.remove(db.STORES.settings, 'catalogHidden');
+    const hidden = await catalog.hiddenIds();
+    assertEqual(hidden.size, 222);
+    const all = await catalog.load();
+    assertEqual((await catalog.visible()).length, all.length - 222);
+    const known = new Set(all.map(x => x.id));
+    assertEqual([...hidden].filter(id => !known.has(id)), [], 'מזהה מוסתר שאינו קיים בקטלוג');
+  });
+
+  s.test('החזרת פריט אחד שומרת את שאר ברירת המחדל ולא מוחקת אותה', async () => {
+    await db.remove(db.STORES.settings, 'catalogHidden');
+    const first = [...await catalog.hiddenIds()][0];
+    await catalog.unhide(first);
+    const after = await catalog.hiddenIds();
+    assertEqual(after.size, 221, 'ההחזרה מחקה את כל רשימת ברירת המחדל');
+    assertTrue(!after.has(first), 'הפריט שהוחזר עדיין מוסתר');
+    await db.remove(db.STORES.settings, 'catalogHidden');
+  });
+
+  s.test('שני המדורים החדשים אינם מוסתרים', async () => {
+    await db.remove(db.STORES.settings, 'catalogHidden');
+    const visible = await catalog.visible();
+    const trek = visible.filter(x => x.section === 'ציוד לטרקים').length;
+    const ski = visible.filter(x => x.section === 'ציוד סקי').length;
+    assertEqual([trek, ski], [76, 18]);
+  });
+
+  s.test('אף מדור לא נעלם לגמרי בגלל ההסתרה', async () => {
+    await db.remove(db.STORES.settings, 'catalogHidden');
+    const sections = new Set((await catalog.load()).map(x => x.section));
+    const left = new Set((await catalog.visible()).map(x => x.section));
+    assertEqual([...sections].filter(s2 => !left.has(s2)), []);
+  });
+
   await s.done();
 }

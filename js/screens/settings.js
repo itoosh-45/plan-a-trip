@@ -124,42 +124,102 @@ function currencySection(active) {
 
 // ---------- פריטים מוסתרים מהקטלוג ----------
 
-async function hiddenCatalogSection() {
-  const [hidden, byId] = await Promise.all([catalog.hiddenIds(), catalog.byId()]);
-  const items = [...hidden].map(id => byId.get(id)).filter(Boolean);
+// המדורים הפתוחים נשמרים בין רינדורים, אחרת כל החזרת פריט סוגרת את הרשימה
+const openHiddenSections = new Set();
 
-  const note = 'פריטים שהוסרו מהקטלוג ואינם מוצעים בשום טיול. החזרה לכאן מחזירה אותם לבורר הקטלוג.';
+async function hiddenCatalogSection() {
+  const [hidden, byId, all] = await Promise.all([
+    catalog.hiddenIds(), catalog.byId(), catalog.load(),
+  ]);
+  const items = [...hidden].map(id => byId.get(id)).filter(Boolean);
+  const note = 'פריטים שאינם מוצעים בשום טיול. הם לא נמחקו — החזרה כאן מחזירה אותם לבורר הקטלוג.';
+
   if (!items.length) {
     return section('פריטים מוסתרים מהקטלוג', note, [
-      el('div', { class: 'sub', text: 'אין כרגע פריטים מוסתרים — הקטלוג מלא.' }),
+      el('div', { class: 'sub', text: 'אין פריטים מוסתרים. כל הקטלוג זמין.' }),
     ]);
   }
 
-  return section('פריטים מוסתרים מהקטלוג', note, [
-    ...items.map(item => el('div', { class: 'row' }, [
-      el('span', { class: 'grow' }, [
-        el('span', { style: 'display:block', text: item.text }),
-        el('span', { class: 'sub', text: `${item.section} · ${item.topic}` }),
-      ]),
-      el('button', {
-        class: 'btn btn-tertiary', text: 'החזר לקטלוג',
-        onClick: async () => {
-          await catalog.unhide(item.id);
-          toast('הפריט חזר לקטלוג', 'success');
-          refresh();
-        },
-      }),
-    ])),
-    el('button', {
-      class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
-      text: `החזר את כל ${items.length} הפריטים`,
-      onClick: async () => {
-        await catalog.setHidden([]);
-        toast('כל הפריטים חזרו לקטלוג', 'success');
+  // אותה חלוקה למדורים שיש בקטלוג עצמו, ובאותו סדר
+  const order = [];
+  for (const item of all) if (!order.includes(item.section)) order.push(item.section);
+  const bySection = new Map();
+  for (const item of items) {
+    if (!bySection.has(item.section)) bySection.set(item.section, []);
+    bySection.get(item.section).push(item);
+  }
+
+  const body = [
+    el('div', { class: 'sub', style: 'margin-block-end:8px',
+      text: `${items.length} מוסתרים מתוך ${all.length} בקטלוג. ${all.length - items.length} זמינים.` }),
+  ];
+
+  for (const name of order) {
+    const group = bySection.get(name);
+    if (!group) continue;
+    const isOpen = openHiddenSections.has(name);
+
+    body.push(el('button', {
+      class: 'group-head cat-head', 'aria-expanded': String(isOpen),
+      onClick: () => {
+        if (isOpen) openHiddenSections.delete(name); else openHiddenSections.add(name);
         refresh();
       },
-    }),
-  ]);
+    }, [
+      el('span', {
+        html: icon('chevronDown'),
+        style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : 90}deg)`,
+      }),
+      el('span', { class: 'grow', text: name }),
+      el('span', { class: 'sub num', text: String(group.length) }),
+    ]));
+
+    if (!isOpen) continue;
+    for (const item of group) {
+      body.push(el('div', { class: 'row' }, [
+        el('span', { class: 'grow' }, [
+          el('span', { style: 'display:block', text: item.text }),
+          el('span', { class: 'sub', text: item.topic }),
+        ]),
+        el('button', {
+          class: 'btn btn-tertiary', text: 'החזר',
+          onClick: async () => {
+            await catalog.unhide(item.id);
+            toast('הפריט חזר לקטלוג', 'success');
+            refresh();
+          },
+        }),
+      ]));
+    }
+    body.push(el('button', {
+      class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px',
+      text: `החזר את כל ${group.length} הפריטים ב"${name}"`,
+      onClick: async () => {
+        const ids = new Set(group.map(x => x.id));
+        await catalog.setHidden([...hidden].filter(id => !ids.has(id)));
+        toast(`${group.length} פריטים חזרו לקטלוג`, 'success');
+        refresh();
+      },
+    }));
+  }
+
+  body.push(el('button', {
+    class: 'btn btn-secondary btn-block', style: 'margin-block-start:16px',
+    text: `החזר את כל ${items.length} הפריטים לקטלוג`,
+    onClick: async () => {
+      const ok = await confirmDanger({
+        title: 'להחזיר את הכול?',
+        body: `כל ${items.length} הפריטים המוסתרים יחזרו לבורר הקטלוג.`,
+        confirmLabel: 'החזר הכול',
+      });
+      if (!ok) return;
+      await catalog.setHidden([]);
+      toast('כל הפריטים חזרו לקטלוג', 'success');
+      refresh();
+    },
+  }));
+
+  return section('פריטים מוסתרים מהקטלוג', note, body);
 }
 
 // ---------- שערי המרה ----------
