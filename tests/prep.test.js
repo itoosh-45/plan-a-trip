@@ -121,7 +121,7 @@ export default async function () {
   s.test('הקטלוג נטען אופליין — קובץ סטטי מקומי בלי תלות ברשת', async () => {
     const { load } = await import('../js/catalog.js');
     const cat = await load();
-    assertTrue(cat.length === 519);
+    assertTrue(cat.length === 613);
   });
 
   // ---- קטגוריות, סדר וסינון הקטלוג ----

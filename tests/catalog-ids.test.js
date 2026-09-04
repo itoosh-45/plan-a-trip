@@ -4,8 +4,8 @@ export default async function () {
   const s = suite('קטלוג ההכנה');
   const cat = await (await fetch('./data/prep-catalog.json')).json();
 
-  s.test('הקטלוג מכיל 519 פריטים', () => {
-    assertEqual(cat.length, 519);
+  s.test('הקטלוג מכיל 613 פריטים', () => {
+    assertEqual(cat.length, 613);
   });
 
   s.test('לכל פריט יש id בפורמט pNNNN', () => {
@@ -14,7 +14,7 @@ export default async function () {
   });
 
   s.test('כל המזהים ייחודיים', () => {
-    assertEqual(new Set(cat.map(x => x.id)).size, 519);
+    assertEqual(new Set(cat.map(x => x.id)).size, 613);
   });
 
   s.test('לכל פריט יש phase, section, topic, priority, text', () => {
@@ -26,7 +26,7 @@ export default async function () {
     const count = p => cat.filter(x => x.phase === p).length;
     assertEqual(
       { before: count('לפני'), onWay: count('בדרך'), during: count('בשהות'), back: count('בחזרה') },
-      { before: 274, onWay: 45, during: 157, back: 43 }
+      { before: 368, onWay: 45, during: 157, back: 43 }
     );
   });
 
@@ -35,9 +35,12 @@ export default async function () {
     assertEqual([...new Set(cat.map(x => x.priority))].filter(p => !allowed.has(p)), []);
   });
 
-  s.test('8 מדורים ו-37 נושאים', () => {
-    assertEqual(new Set(cat.map(x => x.section)).size, 8);
-    assertEqual(new Set(cat.map(x => x.topic)).size, 37);
+  s.test('10 מדורים ו-55 נושאים, כולל ציוד לטרקים וציוד סקי', () => {
+    assertEqual(new Set(cat.map(x => x.section)).size, 10);
+    assertEqual(new Set(cat.map(x => x.topic)).size, 55);
+    const sections = new Set(cat.map(x => x.section));
+    assertEqual(sections.has('ציוד לטרקים'), true);
+    assertEqual(sections.has('ציוד סקי'), true);
   });
 
   await s.done();
