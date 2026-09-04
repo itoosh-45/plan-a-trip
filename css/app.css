@@ -356,6 +356,33 @@ body {
   height: 1px;
   background: var(--color-border);
 }
+/* כותרת קטגוריה בתוך שלב: קו מפריד לרוחב, וטקסט קטן שלא מתחרה בכותרת הכרטיס */
+.cat-head {
+  margin-block: 14px 2px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-head);
+  color: var(--color-text-dim);
+  min-height: 36px;
+}
+.cat-head .grow { flex: 0 0 auto; }
+.cat-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+/* אזור השחרור של הגרירה. גובה מינימלי כדי שאפשר יהיה לגרור לקבוצה ריקה. */
+.drop-zone {
+  min-height: 44px;
+  border-radius: var(--radius-control);
+}
+.drop-zone.drop-target { outline: 2px dashed var(--color-accent); }
+
+/* הדחיפות כבר לא רמת קיפול, ולכן היא נאמרת על הפריט עצמו */
+.urgency-tag { color: var(--urgency, var(--color-accent)); font-weight: 700; }
+
 .task {
   display: flex;
   align-items: flex-start;

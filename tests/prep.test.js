@@ -124,5 +124,82 @@ export default async function () {
     assertTrue(cat.length === 519);
   });
 
+  // ---- קטגוריות, סדר וסינון הקטלוג ----
+
+  s.test('משימה מהקטלוג יורשת את המדור שלה כקטגוריה', async () => {
+    const t = await freshTrip();
+    await prep.addFromCatalog(t.id, [{ id: 'p0001', phase: 'לפני', section: 'תכנון', text: 'דרכון', priority: 'חובה' }]);
+    const [task] = await prep.listTasks(t.id);
+    assertEqual(task.category, 'תכנון');
+  });
+
+  s.test('משימה ישנה בלי category נגזרת מהקטלוג לפי catalogId', async () => {
+    const t = await freshTrip();
+    // רשומה כמו שנשמרה לפני השינוי: catalogId בלי category
+    await db.put(db.STORES.prepTasks, {
+      tripId: t.id, catalogId: 'p0001', stage: 'before', urgency: 'critical', title: 'ישן',
+    });
+    const [task] = await prep.listTasks(t.id);
+    assertEqual(task.category, 'תכנון', 'הקטגוריה לא נגזרה מהקטלוג');
+  });
+
+  s.test('משימה ידנית בלי קטגוריה נופלת לאחר', async () => {
+    const t = await freshTrip();
+    await prep.saveTask(t.id, { stage: 'before', title: 'משהו שלי' });
+    const [task] = await prep.listTasks(t.id);
+    assertEqual(task.category, prep.OTHER);
+  });
+
+  s.test('categoriesFor מחזיר את מדורי הקטלוג של השלב ואחר אחרון', async () => {
+    const before = await prep.categoriesFor('before');
+    assertTrue(before.includes('אריזה'), 'אריזה חסרה בשלב לפני');
+    assertTrue(before.includes('בדרך'), 'המדור של יום הטיסה חסר בשלב לפני');
+    assertEqual(before[before.length - 1], prep.OTHER);
+    const after = await prep.categoriesFor('after');
+    assertTrue(!after.includes('אריזה'), 'מדור של לפני דלף לשלב בחזרה');
+  });
+
+  s.test('reorder קובע סדר מפורש שגובר על הדחיפות', async () => {
+    const t = await freshTrip();
+    const a = await prep.saveTask(t.id, { stage: 'before', category: 'אריזה', urgency: 'critical', title: 'א' });
+    const b = await prep.saveTask(t.id, { stage: 'before', category: 'אריזה', urgency: 'normal', title: 'ב' });
+    assertEqual((await prep.listTasks(t.id)).map(x => x.title), ['א', 'ב'], 'המיון ההתחלתי אינו לפי דחיפות');
+    await prep.reorder(t.id, 'before', 'אריזה', [b.id, a.id]);
+    assertEqual((await prep.listTasks(t.id)).map(x => x.title), ['ב', 'א'], 'הסדר הידני לא גבר על הדחיפות');
+  });
+
+  s.test('גרירה לקבוצה אחרת מעבירה שלב וקטגוריה יחד', async () => {
+    const t = await freshTrip();
+    const a = await prep.saveTask(t.id, { stage: 'before', category: 'אריזה', title: 'א' });
+    await prep.reorder(t.id, 'during', 'במהלך השהות', [a.id]);
+    const [task] = await prep.listTasks(t.id);
+    assertEqual([task.stage, task.category], ['during', 'במהלך השהות']);
+  });
+
+  s.test('מה שבוצע יורד לסוף גם כשיש סדר ידני', async () => {
+    const t = await freshTrip();
+    const a = await prep.saveTask(t.id, { stage: 'before', category: 'אריזה', title: 'א', done: true });
+    const b = await prep.saveTask(t.id, { stage: 'before', category: 'אריזה', title: 'ב' });
+    await prep.reorder(t.id, 'before', 'אריזה', [a.id, b.id]);
+    assertEqual((await prep.listTasks(t.id)).map(x => x.title), ['ב', 'א']);
+  });
+
+  s.test('usedCatalogIds מחזיר את מה שכבר ברשימה, והסרה מחזירה לקטלוג', async () => {
+    const t = await freshTrip();
+    await prep.addFromCatalog(t.id, [{ id: 'p0001', phase: 'לפני', section: 'תכנון', text: 'דרכון', priority: 'חובה' }]);
+    assertTrue((await prep.usedCatalogIds(t.id)).has('p0001'), 'הפריט לא סומן כתפוס');
+    const [task] = await prep.listTasks(t.id);
+    await prep.removeTask(t.id, task.id);
+    assertTrue(!(await prep.usedCatalogIds(t.id)).has('p0001'), 'הפריט לא חזר לקטלוג אחרי הסרה');
+  });
+
+  s.test('מה שתפוס בטיול אחד זמין בטיול אחר', async () => {
+    const a = await freshTrip();
+    const b = await trips.createTrip({ name: 'טיול שני', currency: 'ILS' });
+    await prep.addFromCatalog(a.id, [{ id: 'p0001', phase: 'לפני', section: 'תכנון', text: 'דרכון', priority: 'חובה' }]);
+    assertTrue((await prep.usedCatalogIds(a.id)).has('p0001'));
+    assertTrue(!(await prep.usedCatalogIds(b.id)).has('p0001'), 'ההסתרה דלפה בין טיולים');
+  });
+
   await s.done();
 }

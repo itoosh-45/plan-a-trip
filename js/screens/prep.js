@@ -7,19 +7,39 @@ import { refresh } from '../app.js';
 
 const ZONES = ['critical', 'important', 'normal'];
 
-// נשמר בין רינדורים כדי שקטגוריה פתוחה לא תיסגר בכל שמירה
+// נשמר בין רינדורים כדי שקבוצה פתוחה לא תיסגר בכל שמירה
 const openStages = new Set(['before']);
+// קבוצות פתוחות כברירת מחדל. נשמר מה שנסגר, לא מה שנפתח.
+const closedGroups = new Set();
 let urgencyFilter = '';
+
+const groupKey = (stage, category) => `${stage}|${category}`;
 
 // ---------- טופס משימה ----------
 
-async function openTaskSheet(tripId, existing, stage) {
-  const segs = await it.listSegments(tripId);
+async function openTaskSheet(tripId, existing, stage, category) {
+  const [segs, categories] = await Promise.all([
+    it.listSegments(tripId),
+    prep.categoriesFor(existing?.stage || stage || 'before'),
+  ]);
+
   const title = el('input', { class: 'field', type: 'text', value: existing?.title || '' });
   const urgency = el('select', { class: 'field' }, Object.entries(prep.URGENCY).map(([k, v]) =>
     el('option', { value: k, selected: (existing?.urgency || 'normal') === k, text: v })));
   const stageSel = el('select', { class: 'field' }, Object.entries(prep.STAGES).map(([k, v]) =>
     el('option', { value: k, selected: (existing?.stage || stage || 'before') === k, text: v })));
+
+  const chosenCategory = existing?.category || category || prep.OTHER;
+  const categorySel = el('select', { class: 'field' }, categories.map(c =>
+    el('option', { value: c, selected: c === chosenCategory, text: c })));
+
+  // החלפת שלב מחליפה את רשימת הקטגוריות — קטגוריה של "לפני" לא שייכת ל"בחזרה"
+  stageSel.addEventListener('change', async () => {
+    const next = await prep.categoriesFor(stageSel.value);
+    categorySel.replaceChildren(...next.map(c =>
+      el('option', { value: c, selected: c === prep.OTHER, text: c })));
+  });
+
   const segment = el('select', { class: 'field' }, [
     el('option', { value: '', text: 'ללא שיוך ליעד' }),
     ...segs.map(sg => el('option', { value: sg.id, selected: existing?.segmentId === sg.id, text: sg.city })),
@@ -35,19 +55,11 @@ async function openTaskSheet(tripId, existing, stage) {
   const s = sheet({
     title: existing ? 'עריכת משימה' : 'משימה חדשה',
     body: el('div', {}, [
-      row('כותרת', title), row('דחיפות', urgency), row('קטגוריה', stageSel),
-      row('יעד', segment), row('עלות משוערת', amount),
+      row('כותרת', title), row('דחיפות', urgency), row('שלב', stageSel),
+      row('קטגוריה', categorySel), row('יעד', segment), row('עלות משוערת', amount),
     ]),
     actions: [
-      existing
-        ? el('button', { class: 'btn btn-danger btn-block', text: 'מחק', onClick: async () => {
-            const ok = await confirmDanger({ title: 'למחוק את המשימה?', body: existing.title, confirmLabel: 'מחק' });
-            if (!ok) return;
-            await prep.removeTask(tripId, existing.id);
-            s.close();
-            refresh();
-          } })
-        : el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
+      el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
         try {
           await prep.saveTask(tripId, {
@@ -55,6 +67,7 @@ async function openTaskSheet(tripId, existing, stage) {
             title: title.value,
             urgency: urgency.value,
             stage: stageSel.value,
+            category: categorySel.value,
             segmentId: segment.value || null,
             plannedAmount: amount.value === '' ? undefined : Number(amount.value),
           });
@@ -67,28 +80,45 @@ async function openTaskSheet(tripId, existing, stage) {
   });
 }
 
-function openMoveSheet(tripId, task) {
-  const others = Object.entries(prep.STAGES).filter(([k]) => k !== task.stage);
+/** הוספה לרשימה: ידנית או מהקטלוג. נפתח מהכפתור שליד כותרת השלב. */
+function openAddSheet(tripId, stage) {
   const s = sheet({
-    title: `העבר את "${task.title}" ל…`,
-    body: el('div', {}, others.map(([key, label]) => el('button', {
-      class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px', text: label,
-      onClick: async () => {
-        await prep.setStage(tripId, task.id, key);
-        toast(`הועבר ל${label}`, 'success');
-        s.close();
-        refresh();
-      },
-    }))),
-    actions: [el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() })],
+    title: `הוספה ל${prep.STAGES[stage]}`,
+    body: el('div', {}, [
+      el('button', {
+        class: 'btn btn-secondary btn-block', style: 'margin-block-start:8px',
+        html: `${icon('search')}<span>בחירה מהקטלוג</span>`,
+        onClick: () => { s.close(); openCatalogSheet(tripId, stage); },
+      }),
+      el('button', {
+        class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px',
+        html: `${icon('plus')}<span>הוספה ידנית</span>`,
+        onClick: () => { s.close(); openTaskSheet(tripId, null, stage); },
+      }),
+    ]),
   });
 }
 
-// ---------- גרירה בין אזורי דחיפות ----------
+async function removeTaskFlow(tripId, task) {
+  const ok = await confirmDanger({
+    title: 'להסיר את המשימה?',
+    body: task.catalogId
+      ? `"${task.title}" יוסר מהרשימה ויחזור להיות זמין בקטלוג.`
+      : `"${task.title}" יימחק מהרשימה.`,
+    confirmLabel: 'הסר',
+  });
+  if (!ok) return;
+  await prep.removeTask(tripId, task.id);
+  toast(task.catalogId ? 'הוסר מהרשימה וחזר לקטלוג' : 'הוסר מהרשימה', 'success');
+  refresh();
+}
+
+// ---------- גרירה: סדר בתוך קבוצה ומעבר בין קבוצות ----------
 
 /**
- * גרירה במגע ובעכבר דרך pointer events. אזור היעד נקבע לפי מה שנמצא מתחת
- * לאצבע ברגע השחרור — לכן זה עובד גם כשהרשימה נגללת תוך כדי.
+ * גרירה במגע ובעכבר דרך pointer events. מקום השחרור נקבע לפי מה שנמצא מתחת
+ * לאצבע ברגע השחרור, ולכן זה עובד גם כשהרשימה נגללת תוך כדי. הקבוצה כולה
+ * נשמרת מחדש עם סדר מפורש — זה הרבה יותר פשוט מלנהל מרווחים בין ערכים.
  */
 function enableDrag(node, tripId, task) {
   const grip = node.querySelector('.grip');
@@ -96,22 +126,31 @@ function enableDrag(node, tripId, task) {
 
   grip.addEventListener('pointerdown', event => {
     event.preventDefault();
-    // לכידת המצביע נחמדה אך לא הכרחית: המאזינים יושבים על document ממילא,
-    // כך שגם דפדפן שמסרב ללכוד לא משאיר שורה תקועה במצב גרירה.
     try { grip.setPointerCapture(event.pointerId); } catch { /* אין לכידה */ }
     node.classList.add('dragging');
-    let target = null;
 
-    const highlight = zone => {
-      for (const z of document.querySelectorAll('[data-zone]')) {
-        z.style.outline = z === zone ? '2px dashed var(--color-accent)' : '';
+    const groupAt = ev => document
+      .elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-group]') || null;
+
+    const highlight = group => {
+      for (const g of document.querySelectorAll('[data-group]')) {
+        g.classList.toggle('drop-target', g === group);
       }
     };
 
-    const zoneAt = ev => document
-      .elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-zone]') || null;
-
-    const onMove = ev => { target = zoneAt(ev); highlight(target); };
+    // מזיז את השורה בתוך ה-DOM תוך כדי גרירה, כדי שמה שרואים הוא מה שיישמר
+    const onMove = ev => {
+      const group = groupAt(ev);
+      highlight(group);
+      if (!group) return;
+      const siblings = [...group.querySelectorAll('.task')].filter(n => n !== node);
+      const after = siblings.find(n => {
+        const box = n.getBoundingClientRect();
+        return ev.clientY < box.top + box.height / 2;
+      });
+      if (after) group.insertBefore(node, after);
+      else group.append(node);
+    };
 
     const onUp = async ev => {
       document.removeEventListener('pointermove', onMove);
@@ -119,12 +158,15 @@ function enableDrag(node, tripId, task) {
       document.removeEventListener('pointercancel', onUp);
       node.classList.remove('dragging');
       highlight(null);
-      const zone = zoneAt(ev) || target;
-      const urgency = zone?.dataset.zone;
-      if (urgency && urgency !== task.urgency) {
-        await prep.setUrgency(tripId, task.id, urgency);
-        refresh();
-      }
+
+      const group = node.closest('[data-group]');
+      if (!group) { refresh(); return; }
+      const [stage, category] = group.dataset.group.split('|');
+      const ids = [...group.querySelectorAll('.task')].map(n => n.dataset.id);
+      try {
+        await prep.reorder(tripId, stage, category, ids);
+      } catch (err) { toast(err.message, 'error'); }
+      refresh();
     };
 
     document.addEventListener('pointermove', onMove);
@@ -138,6 +180,7 @@ function taskRow(tripId, task, segs, currency) {
   const node = el('div', {
     class: `task ${task.done ? 'done' : ''}`.trim(),
     'data-urgency': task.urgency || 'normal',
+    'data-id': task.id,
   }, [
     el('button', {
       class: 'tick', 'aria-pressed': String(!!task.done),
@@ -150,20 +193,18 @@ function taskRow(tripId, task, segs, currency) {
       onClick: () => openTaskSheet(tripId, task),
     }, [
       el('div', { text: task.title }),
-      // רמת הדחיפות כבר נאמרת בכותרת האזור ובצבע הרקע — אין צורך לחזור עליה כאן
-      seg || task.plannedAmount
-        ? el('div', { class: 'sub' }, [
-            seg ? el('span', { text: seg.city }) : null,
-            seg && task.plannedAmount ? el('span', { text: ' · ' }) : null,
-            task.plannedAmount
-              ? el('span', { class: 'num', text: fmtMoney(task.plannedAmount, currency) })
-              : null,
-          ])
-        : null,
+      el('div', { class: 'sub' }, [
+        el('span', { class: 'urgency-tag', text: prep.URGENCY[task.urgency || 'normal'] }),
+        seg ? el('span', { text: ` · ${seg.city}` }) : null,
+        task.plannedAmount
+          ? el('span', { class: 'num', text: ` · ${fmtMoney(task.plannedAmount, currency)}` })
+          : null,
+      ]),
     ]),
     el('button', {
-      class: 'icon-btn', 'aria-label': `העבר את ${task.title} לקטגוריה אחרת`,
-      html: icon('transfer'), onClick: () => openMoveSheet(tripId, task),
+      class: 'icon-btn', style: 'color:var(--color-danger)',
+      'aria-label': `הסר את ${task.title} מהרשימה`,
+      html: icon('trash'), onClick: () => removeTaskFlow(tripId, task),
     }),
     el('span', { class: 'grip icon-btn', 'aria-hidden': 'true', html: icon('drag') }),
   ]);
@@ -176,6 +217,7 @@ function taskRow(tripId, task, segs, currency) {
 export function openCatalogSheet(tripId, stage) {
   const selected = new Map();
   const view = { phase: null, section: null, query: '' };
+  let used = new Set();
 
   const body = el('div');
   const s = sheet({
@@ -193,6 +235,9 @@ export function openCatalogSheet(tripId, stage) {
       } }),
     ],
   });
+
+  // פריט שכבר ברשימה של הטיול הזה אינו מוצג. מחיקתו מהרשימה מחזירה אותו לכאן.
+  const available = rows => rows.filter(r => !used.has(r.id));
 
   function catalogRow(item) {
     const isSel = selected.has(item.id);
@@ -215,7 +260,12 @@ export function openCatalogSheet(tripId, stage) {
     }, [el('span', { html: icon('chevronLeft') }), el('span', { text: label })]);
   }
 
+  function emptyNote(text) {
+    return el('div', { class: 'sub', style: 'padding:12px', text });
+  }
+
   async function render() {
+    used = await prep.usedCatalogIds(tripId);
     body.replaceChildren();
     body.append(el('div', { class: 'field-row' }, [
       el('input', {
@@ -225,7 +275,7 @@ export function openCatalogSheet(tripId, stage) {
     ]));
 
     if (view.query.trim()) {
-      const results = await catalog.search(view.query);
+      const results = available(await catalog.search(view.query));
       body.append(el('div', { class: 'sub', text: `${results.length} תוצאות` }));
       body.append(...results.slice(0, 120).map(catalogRow));
       return;
@@ -253,16 +303,45 @@ export function openCatalogSheet(tripId, stage) {
     }
 
     body.append(backRow(() => { view.section = null; render(); }, view.section));
+    let shown = 0;
     for (const topic of await catalog.topics(view.phase, view.section)) {
+      const rows = available(await catalog.byTopic(view.phase, view.section, topic));
+      if (!rows.length) continue;
+      shown += rows.length;
       body.append(el('div', { class: 'card-title', style: 'margin-block-start:12px', text: topic }));
-      body.append(...(await catalog.byTopic(view.phase, view.section, topic)).map(catalogRow));
+      body.append(...rows.map(catalogRow));
     }
+    if (!shown) body.append(emptyNote('כל הפריטים במדור הזה כבר ברשימה.'));
   }
 
   render();
 }
 
 // ---------- המסך ----------
+
+function stageHeader(stage, label, tasks, isOpen, tripId) {
+  const done = tasks.filter(t => t.done).length;
+  return el('div', { style: 'display:flex; align-items:center; gap:4px' }, [
+    el('button', {
+      class: 'group-head', 'aria-expanded': String(isOpen),
+      onClick: () => {
+        if (isOpen) openStages.delete(stage); else openStages.add(stage);
+        refresh();
+      },
+    }, [
+      el('span', {
+        html: icon('chevronDown'),
+        style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : 90}deg)`,
+      }),
+      el('span', { class: 'grow card-title', text: label }),
+      el('span', { class: 'sub num', text: `${done}/${tasks.length}` }),
+    ]),
+    el('button', {
+      class: 'icon-btn', 'aria-label': `הוסף פריט ל${label}`,
+      html: icon('plus'), onClick: () => openAddSheet(tripId, stage),
+    }),
+  ]);
+}
 
 export async function mount(host, tripId) {
   if (!tripId) {
@@ -290,56 +369,62 @@ export async function mount(host, tripId) {
   ]));
 
   for (const [stage, label] of Object.entries(prep.STAGES)) {
-    const tasks = all.filter(t => t.stage === stage);
+    const stageTasks = all.filter(t => t.stage === stage);
     const isOpen = openStages.has(stage);
-    const done = tasks.filter(t => t.done).length;
-    const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+    const pct = stageTasks.length
+      ? Math.round((stageTasks.filter(t => t.done).length / stageTasks.length) * 100)
+      : 0;
 
-    const head = el('button', {
-      class: 'group-head', 'aria-expanded': String(isOpen),
-      onClick: () => {
-        if (isOpen) openStages.delete(stage); else openStages.add(stage);
-        refresh();
-      },
-    }, [
-      el('span', {
-        html: icon('chevronDown'),
-        style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : 90}deg)`,
-      }),
-      el('span', { class: 'grow card-title', text: label }),
-      el('span', { class: 'sub num', text: `${done}/${tasks.length}` }),
-    ]);
-
-    const body = [head, el('div', { class: 'bar', style: 'margin-block-start:8px' }, [
-      el('span', { style: `width:${pct}%` }),
-    ])];
+    const body = [
+      stageHeader(stage, label, stageTasks, isOpen, tripId),
+      el('div', { class: 'bar', style: 'margin-block-start:8px' }, [
+        el('span', { style: `width:${pct}%` }),
+      ]),
+    ];
 
     if (isOpen) {
-      for (const zone of ZONES) {
-        if (urgencyFilter && urgencyFilter !== zone) continue;
-        const inZone = tasks.filter(t => (t.urgency || 'normal') === zone);
-        body.push(el('div', { class: 'zone-label' }, [
-          el('span', { style: `color:var(--urgency-${zone})`, text: prep.URGENCY[zone] }),
-          el('span', { class: 'dim', text: `${inZone.length}` }),
-        ]));
-        body.push(el('div', {
-          'data-zone': zone,
-          style: 'min-height:44px; border-radius:var(--radius-control)',
-        }, inZone.length
-          ? inZone.map(t => taskRow(tripId, t, segs, currency))
-          : [el('div', { class: 'sub', style: 'padding:12px', text: 'גררו לכאן פריט' })]));
+      const visible = urgencyFilter
+        ? stageTasks.filter(t => (t.urgency || 'normal') === urgencyFilter)
+        : stageTasks;
+
+      // רק קטגוריות שיש בהן משהו. קטגוריה ריקה היא רעש, לא מידע.
+      const order = await prep.categoriesFor(stage);
+      const present = order.filter(c => visible.some(t => t.category === c));
+      for (const c of new Set(visible.map(t => t.category))) {
+        if (!present.includes(c)) present.push(c);
       }
 
-      body.push(el('div', { style: 'display:flex; gap:8px; margin-block-start:16px' }, [
-        el('button', {
-          class: 'btn btn-tertiary btn-block', text: 'הוספה ידנית',
-          onClick: () => openTaskSheet(tripId, null, stage),
-        }),
-        el('button', {
-          class: 'btn btn-secondary btn-block', text: 'מהקטלוג',
-          onClick: () => openCatalogSheet(tripId, stage),
-        }),
-      ]));
+      if (!present.length) {
+        body.push(el('div', { class: 'sub', style: 'padding:12px', text: 'הרשימה ריקה. הוסיפו פריט מהכפתור שלמעלה.' }));
+      }
+
+      for (const category of present) {
+        const inGroup = visible.filter(t => t.category === category);
+        const key = groupKey(stage, category);
+        const groupOpen = !closedGroups.has(key);
+
+        body.push(el('button', {
+          class: 'group-head cat-head', 'aria-expanded': String(groupOpen),
+          onClick: () => {
+            if (closedGroups.has(key)) closedGroups.delete(key); else closedGroups.add(key);
+            refresh();
+          },
+        }, [
+          el('span', {
+            html: icon('chevronDown'),
+            style: `color:var(--color-accent); transform:rotate(${groupOpen ? 0 : 90}deg)`,
+          }),
+          el('span', { class: 'grow', text: category }),
+          el('span', { class: 'sub num', text: `${inGroup.filter(t => t.done).length}/${inGroup.length}` }),
+        ]));
+
+        body.push(el('div', {
+          'data-group': key,
+          class: 'drop-zone',
+        }, groupOpen
+          ? inGroup.map(t => taskRow(tripId, t, segs, currency))
+          : []));
+      }
     }
 
     host.append(card(body, 'card-gap'));

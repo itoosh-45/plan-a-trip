@@ -9,6 +9,15 @@ export async function load() {
   return cache;
 }
 
+let index = null;
+
+/** מפת id -> פריט, לחיפוש חוזר בלי לסרוק 519 שורות בכל קריאה. */
+export async function byId() {
+  if (index) return index;
+  index = new Map((await load()).map(item => [item.id, item]));
+  return index;
+}
+
 const PHASE_ORDER = ['לפני', 'בדרך', 'בשהות', 'בחזרה'];
 
 function uniqueInOrder(values) {
