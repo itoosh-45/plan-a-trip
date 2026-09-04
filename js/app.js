@@ -125,6 +125,7 @@ export async function boot() {
   buildNav();
   try { activeTrip = localStorage.getItem('activeTripId') || null; } catch { activeTrip = null; }
   const report = await migrate.run();
+  await migrate.recolorCategories();
   if (!report.skipped && report.trips) toast('הנתונים הקיימים הותאמו למבנה החדש', 'success');
   document.addEventListener('data:changed', () => refresh());
   window.addEventListener('online',  () => { toast('חזרנו לרשת', 'success'); autoRefreshRates(); });
