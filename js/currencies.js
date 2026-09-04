@@ -15,6 +15,19 @@ export const NAMES = {
   EGP: 'לירה מצרית', JOD: 'דינר ירדני', LKR: 'רופי סרילנקי', NPR: 'רופי נפאלי',
 };
 
+/** הסימן של המטבע לפי התקן. איפה שאין סימן ייחודי (PLN, AED) חוזר הקוד — וזה הנכון. */
+export function symbol(code) {
+  const parts = new Intl.NumberFormat('he-IL', { style: 'currency', currency: code }).formatToParts(0);
+  return parts.find(p => p.type === 'currency')?.value || code;
+}
+
+/** התווית המלאה של מטבע. מטבע בלי סימן ייחודי אינו מציג את הקוד פעמיים. */
+export function label(code) {
+  const sign = symbol(code);
+  const name = NAMES[code] || '';
+  return sign === code ? `${code} · ${name}`.trim() : `${sign} · ${code} · ${name}`.trim();
+}
+
 export async function listActive() {
   const saved = await db.getSetting('currencies', null);
   return saved?.length ? saved : DEFAULT_CURRENCIES;

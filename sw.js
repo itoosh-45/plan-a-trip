@@ -1,5 +1,5 @@
 // מטמון האפליקציה. שינוי המספר כאן מפיל את המטמון הישן בהתקנה הבאה.
-const CACHE = 'trip-planner-v4';
+const CACHE = 'trip-planner-v5';
 
 const SHELL = [
   './',
