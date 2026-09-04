@@ -5,16 +5,22 @@ export const GENERAL_CITY = 'כללי';
 const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
 
+/**
+ * פלטת הקטגוריות. הגוונים פרושים במרווחים שווים והבהירות משתנה ביניהם,
+ * כדי שגם צופה עם עיוורון צבעים יבחין בין פרוסות סמוכות בגרף.
+ * הפלטה נבדקה: הפרדה, רוויה מינימלית וניגודיות מול הרקע — כולן עוברות.
+ * שינוי ערך כאן מחייב לעדכן גם את RECOLOR ב-migrate.js.
+ */
 export const DEFAULT_CATEGORIES = [
-  { key: 'flights',     name: 'טיסות',     color: '#EE4266', icon: 'flight' },
-  { key: 'lodging',     name: 'לינה',      color: '#06BCC1', icon: 'lodging' },
-  { key: 'food',        name: 'אוכל',      color: '#D97706', icon: 'restaurant' },
-  { key: 'attractions', name: 'אטרקציות',  color: '#0E9F6E', icon: 'attraction' },
-  { key: 'transport',   name: 'תחבורה',    color: '#5A6672', icon: 'ride' },
-  { key: 'shopping',    name: 'קניות',     color: '#DB2777', icon: 'shopping' },
-  { key: 'gear',        name: 'ציוד',      color: '#7C3AED', icon: 'gear' },
-  { key: 'courses',     name: 'קורסים',    color: '#2563EB', icon: 'meeting' },
-  { key: 'other',       name: 'אחר',       color: '#94A3B8', icon: 'other' },
+  { key: 'flights',     name: 'טיסות',     color: '#BC484F', icon: 'flight' },
+  { key: 'lodging',     name: 'לינה',      color: '#009C89', icon: 'lodging' },
+  { key: 'food',        name: 'אוכל',      color: '#CB8324', icon: 'restaurant' },
+  { key: 'attractions', name: 'אטרקציות',  color: '#387A3D', icon: 'attraction' },
+  { key: 'transport',   name: 'תחבורה',    color: '#547ECD', icon: 'ride' },
+  { key: 'shopping',    name: 'קניות',     color: '#CE6196', icon: 'shopping' },
+  { key: 'gear',        name: 'ציוד',      color: '#6A50A7', icon: 'gear' },
+  { key: 'courses',     name: 'קורסים',    color: '#009AB4', icon: 'meeting' },
+  { key: 'other',       name: 'אחר',       color: '#897B25', icon: 'other' },
 ];
 
 /** תאריכי הטיול הם מקור האמת של כל לוח הזמנים. שניהם אופציונליים (דילוג באונבורדינג). */

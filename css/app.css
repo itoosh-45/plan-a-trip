@@ -1,12 +1,15 @@
 * { -webkit-tap-highlight-color: transparent; }
 
+/* icon() מייצר stroke-width="1.8" כתכונת מצגת, ו-CSS גובר עליה. */
+svg { stroke-width: 1.5; }
+
 html, body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-app);
-  font-size: var(--text-sm);
-  line-height: 1.45;
+  font-size: var(--text-body);
+  line-height: 1.5;
   letter-spacing: var(--tracking-body);
   overflow-x: hidden;
 }
@@ -15,26 +18,26 @@ html, body {
 
 /* כותרת מסך */
 .screen-title {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   font-size: var(--text-lg);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: var(--tracking-head);
 }
 
 /* כותרת כרטיס — תווית קטנה מעל התוכן, לא כותרת שנייה */
 .card-title {
   margin: 0 0 8px;
-  font-size: var(--text-xs);
-  font-weight: 700;
-  color: var(--color-text-dim);
-  letter-spacing: var(--tracking-head);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
 }
 
 /* שם של פריט בתוך שורה */
-.row-title { font-size: var(--text-sm); font-weight: 600; }
+.row-title { font-size: var(--text-sm); font-weight: 500; }
 
 /* מצב ריק: לא כותרת כרטיס, ולכן לא מתכווץ ל-12px אפור */
-.empty-title { font-size: var(--text-sm); font-weight: 700; margin-block-end: 4px; }
+.empty-title { font-size: var(--text-sm); font-weight: 600; margin-block-end: 4px; }
 
 /* בתוך כותרת קבוצה מתקפלת הכותרת יושבת בשורה, בלי מרווח משלה */
 .group-head .card-title { margin: 0; }
@@ -43,9 +46,9 @@ html, body {
 .stat-value {
   margin-block-start: 4px;
   font-size: clamp(var(--text-sm), 4.5vw, var(--text-2xl));
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1.15;
-  letter-spacing: var(--tracking-head);
+  letter-spacing: var(--tracking-num);
   overflow-wrap: anywhere;
 }
 
@@ -70,11 +73,12 @@ body {
   padding-block-end: var(--space-screen-bottom);
 }
 
+/* בכיוון ב׳ הכרטיס אינו קופסה אלא קבוצה: משטח לבן על רקע אפור, בלי מסגרת ובלי צל. */
 .card {
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 0;
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-stamp);
+  box-shadow: none;
   padding: var(--space-card-p);
 }
 .card + .card, .card-gap { margin-block-start: var(--space-card-gap); }
@@ -89,12 +93,16 @@ body {
   border-radius: var(--radius-control);
   border: 1px solid transparent;
   font-size: var(--text-base);
-  font-weight: 700;
+  font-weight: 500;
   cursor: pointer;
 }
 .btn-primary   { background: var(--color-highlight); color: #fff; }
-.btn-secondary { background: var(--color-accent);    color: #fff; }
+/* היה מילוי טורקיז מלא. זה מה שהתחרה בוורוד בכרטיס הארנק. */
+.btn-secondary { background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+                 color: var(--color-accent); border-color: transparent; }
 .btn-tertiary  { background: var(--color-surface); color: var(--color-text); border-color: var(--color-border); }
+/* פעולה משנית בתוך כרטיס: נראית לחיצה בלי להתחרות ב-btn-primary של המסך. */
+.btn-quiet     { background: var(--color-surface-2); color: var(--color-text); }
 .btn-danger    { background: transparent; color: var(--color-danger); border-color: var(--color-danger); }
 .btn-block     { width: 100%; }
 
@@ -125,8 +133,8 @@ body {
 .field:focus { outline: 2px solid var(--color-accent); outline-offset: 0; }
 .field-label {
   display: block;
-  font-size: var(--text-sm);
-  font-weight: 500;
+  font-size: var(--text-xs);
+  font-weight: 400;
   color: var(--color-text-dim);
   margin-block-end: 6px;
 }
@@ -140,35 +148,38 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-height: 36px;
-  padding: 6px 12px;
-  border-radius: var(--radius-control);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  min-height: 34px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--color-surface-2);
   color: var(--color-text-dim);
-  font-size: var(--text-sm);
-  font-weight: 500;
+  font-size: var(--text-body);
+  font-weight: 400;
   cursor: pointer;
 }
 .chip.wrap {
+  border-radius: var(--radius-control);
   max-width: none;
   white-space: normal;
   overflow: visible;
 }
+/* הצ׳יפ הנבחר כהה ונייטרלי, וזה משחרר את הטורקיז לשמש רק כצבע פעולה. */
 .chip[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  background: var(--color-text);
+  border-color: transparent;
+  color: var(--color-surface);
+  font-weight: 500;
 }
 
-.dim { color: var(--color-text-dim); font-weight: 500; }
+.dim { color: var(--color-text-dim); font-weight: 400; }
 .hairline { border-block-start: 1px solid var(--color-hairline); }
 .num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; display: inline-block; }
 /* סכום כסף תמיד bold. .num לבדו נשאר למספרים שאינם כסף. */
-.money { font-weight: 700; }
-.money-lg { font-size: var(--text-2xl); font-weight: 700; letter-spacing: var(--tracking-head); }
+.money { font-weight: 500; }
+.money-lg { font-size: var(--text-2xl); font-weight: 500; letter-spacing: var(--tracking-num); }
 
-.bar { height: 8px; border-radius: 999px; background: var(--color-hairline); overflow: hidden; }
+.bar { height: 3px; border-radius: 999px; background: var(--color-hairline); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--color-accent); }
 .bar.warn > span, .bar > span.warn { background: var(--color-warning); }
 .bar.over > span, .bar > span.over { background: var(--color-danger); }
@@ -178,25 +189,26 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   background: var(--color-surface);
-  border-block-start: 1px solid var(--color-border);
+  border-block-start: 1px solid var(--color-hairline);
   padding-block-end: env(safe-area-inset-bottom);
 }
 #nav button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   min-height: var(--nav-height);
   padding: 8px 4px;
   background: none;
   border: 0;
   font-size: var(--text-11);
-  font-weight: 500;
+  font-weight: 400;
   font-family: inherit;
-  color: var(--color-text-dim);
+  color: var(--color-text-mute);
   cursor: pointer;
 }
-#nav button[aria-current="page"] { color: var(--color-accent); font-weight: 700; }
+/* הפריט הפעיל מסומן בכהות ובמשקל, לא בצבע. */
+#nav button[aria-current="page"] { color: var(--color-text); font-weight: 500; }
 
 .sheet-backdrop {
   position: fixed;
@@ -217,7 +229,7 @@ body {
   padding-block-end: calc(var(--space-card-p) + env(safe-area-inset-bottom));
 }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-block-end: 12px; }
-.sheet-title { font-size: var(--text-lg); font-weight: 700; letter-spacing: var(--tracking-head); margin: 0; }
+.sheet-title { font-size: var(--text-lg); font-weight: 600; letter-spacing: var(--tracking-head); margin: 0; }
 
 #toasts {
   position: fixed;
@@ -231,10 +243,10 @@ body {
   padding: 12px 16px;
   border-radius: var(--radius-control);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-stamp);
+  border: 0;
+  box-shadow: var(--shadow-float);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 400;
 }
 .toast.error   { color: var(--color-danger);  border-color: var(--color-danger); }
 .toast.success { color: var(--color-success); border-color: var(--color-success); }
@@ -245,8 +257,11 @@ body {
   inset-inline-start: var(--space-screen-x);
   inset-block-end: calc(var(--nav-height) + 16px + env(safe-area-inset-bottom));
   z-index: 30;
-  box-shadow: var(--shadow-stamp);
+  box-shadow: var(--shadow-float);
 }
+
+/* ה-FAB הוא ילד של #screen, ולכן :has() שומר לו מקום רק במסכים שיש בהם אחד. */
+#screen:has(.fab) { padding-block-end: 96px; }
 
 @media (prefers-reduced-motion: no-preference) {
   .sheet { animation: sheet-in 200ms ease-out; }
@@ -259,7 +274,16 @@ body {
   padding: 12px var(--space-screen-x) 0;
 }
 .topbar-row { display: flex; align-items: center; gap: 8px; }
-.topbar-row .field { flex: 1; font-weight: 600; }
+/* בורר הטיול נשאר select נייטיבי, ומפסיק להיראות כמו שדה טופס. */
+.topbar-row .field {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  padding-inline: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-head);
+}
 
 /* ---- שורת תאריכים: 75% מרוחב המסך, ממורכזת ---- */
 /* 75% מרוחב המסך, ולא מרוחב הכרטיס שמכיל אותה */
@@ -273,9 +297,9 @@ body {
 
 /* ---- כרטיס טיול (מסך "טיולים" בהגדרות) ---- */
 .trip-card {
-  border: 1px solid var(--color-border);
+  border: 0;
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-stamp);
+  box-shadow: none;
   overflow: hidden;
   background: var(--color-surface);
 }
@@ -293,14 +317,14 @@ body {
 .trip-card-head h3 {
   margin: 0;
   font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: var(--tracking-head);
+  font-weight: 500;
+  letter-spacing: var(--tracking-num);
 }
 .trip-card-head .dates {
   margin-block-start: 4px;
   font-size: var(--text-sm);
-  font-weight: 500;
-  opacity: 0.82;
+  font-weight: 400;
+  opacity: 0.78;
 }
 .trip-card-edit {
   position: absolute;
@@ -326,7 +350,7 @@ body {
   background: rgba(0, 0, 0, 0.32);
   color: #fff;
   font-size: var(--text-11);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
 }
 .trip-card-body {
@@ -336,7 +360,7 @@ body {
   justify-content: space-between;
   gap: 12px;
 }
-.trip-card-body .total { font-size: var(--text-2xl); font-weight: 700; letter-spacing: var(--tracking-head); }
+.trip-card-body .total { font-size: var(--text-2xl); font-weight: 500; letter-spacing: var(--tracking-num); }
 .trip-card[aria-current="true"] { outline: 2px solid var(--color-accent); }
 
 /* ---- דחיפות ברשימת ההכנה ---- */
@@ -346,23 +370,23 @@ body {
   gap: 8px;
   margin-block: 14px 6px;
   font-size: var(--text-xs);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: var(--tracking-head);
-  color: var(--color-text-dim);
+  color: var(--color-text-mute);
 }
 .zone-label::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--color-border);
+  background: var(--color-hairline);
 }
 /* כותרת קטגוריה בתוך שלב: קו מפריד לרוחב, וטקסט קטן שלא מתחרה בכותרת הכרטיס */
 .cat-head {
   margin-block: 14px 2px;
   font-size: var(--text-xs);
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: var(--tracking-head);
-  color: var(--color-text-dim);
+  color: var(--color-text-mute);
   min-height: 36px;
 }
 .cat-head .grow { flex: 0 0 auto; }
@@ -370,37 +394,41 @@ body {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--color-border);
+  background: var(--color-hairline);
 }
 
 /* אזור השחרור של הגרירה. גובה מינימלי כדי שאפשר יהיה לגרור לקבוצה ריקה. */
+/* השורות נוגעות בקצה הקבוצה במקום לרחף בתוך ריפוד הכרטיס. */
 .drop-zone {
   min-height: 44px;
+  margin-inline: calc(var(--space-card-p) * -1);
   border-radius: var(--radius-control);
 }
 .drop-zone.drop-target { outline: 2px dashed var(--color-accent); }
 
-/* הדחיפות כבר לא רמת קיפול, ולכן היא נאמרת על הפריט עצמו */
-.urgency-tag { color: var(--urgency, var(--color-accent)); font-weight: 700; }
+/* הדחיפות כבר לא רמת קיפול, ולכן היא נאמרת על הפריט עצמו.
+   נושא הצבע הוא עיגול הסימון בלבד — המילה נשארת, בלי צבע ובלי הדגשה. */
+.urgency-tag { color: var(--color-text-mute); font-weight: 400; }
 
 .task {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  margin-block-start: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--urgency, var(--color-accent)) 8%, var(--color-surface));
+  align-items: center;
+  gap: 12px;
+  padding: 12px var(--space-card-p);
+  margin-block-start: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-surface);
   touch-action: pan-y;
 }
+.task + .task { box-shadow: inset 0 1px 0 var(--color-hairline); }
 .task[data-urgency="critical"] { --urgency: var(--urgency-critical); }
 .task[data-urgency="important"] { --urgency: var(--urgency-important); }
 .task[data-urgency="normal"] { --urgency: var(--urgency-normal); }
 .task.dragging { opacity: 0.55; }
 .task .grip {
   min-width: 26px;
-  color: var(--color-text-dim);
+  color: var(--color-control-line);
   cursor: grab;
   touch-action: none;
 }
@@ -422,11 +450,12 @@ body {
 .tick {
   position: relative;
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  margin-block-start: 2px;
+  box-sizing: border-box;
+  width: 21px;
+  height: 21px;
+  margin-block-start: 0;
   border-radius: 999px;
-  border: 2px solid var(--urgency, var(--color-accent));
+  border: 1.5px solid var(--color-control-line);
   background: transparent;
   color: #fff;
   display: inline-flex;
@@ -435,10 +464,15 @@ body {
   cursor: pointer;
   transition: background-color 160ms ease, transform 160ms ease;
 }
+/* רק קריטי וחשוב נושאים צבע. "רגיל" נשאר אפור — כך הצבע הוא אות ולא רעש. */
+.task[data-urgency="critical"] .tick,
+.task[data-urgency="important"] .tick { border-color: var(--urgency); }
 /* אזור המגע נשאר 44px גם כשהעיגול קטן */
-.tick::after { content: ''; position: absolute; inset: -8px; }
-.tick svg { opacity: 0; transform: scale(0.6); transition: opacity 160ms ease, transform 160ms ease; }
-.tick[aria-pressed="true"] { background: var(--urgency, var(--color-accent)); }
+.tick::after { content: ''; position: absolute; inset: -12px; }
+.tick svg { width: 13px; height: 13px; stroke-width: 2.6; opacity: 0; transform: scale(0.6); transition: opacity 160ms ease, transform 160ms ease; }
+/* משימה שבוצעה אינה דחיפות: היא מתמלאת בצבע הפעולה, לא באדום.
+   הסלקטור מכוון לגבור על כלל הדחיפות שמעליו, שהוא בעל אותה עוצמה. */
+.task .tick[aria-pressed="true"] { background: var(--color-accent); border-color: var(--color-accent); }
 .tick[aria-pressed="true"] svg { opacity: 1; transform: scale(1); }
 @media (prefers-reduced-motion: reduce) {
   .tick, .tick svg { transition: none; }
@@ -467,7 +501,7 @@ body {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: var(--text-11);
-  font-weight: 700;
+  font-weight: 500;
 }
 .pill.ok   { background: color-mix(in srgb, var(--color-success) 12%, transparent); color: var(--color-success); }
 .pill.over { background: color-mix(in srgb, var(--color-danger) 12%, transparent);  color: var(--color-danger); }
@@ -483,8 +517,8 @@ body {
 .row .grow { flex: 1; min-width: 0; }
 .sub {
   font-size: var(--text-11);
-  font-weight: 500;
-  color: var(--color-text-dim);
+  font-weight: 400;
+  color: var(--color-text-mute);
   margin-block-start: 2px;
   overflow-wrap: anywhere;
 }

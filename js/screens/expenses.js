@@ -14,7 +14,7 @@ let walletOpen = false;
 const KIND_LABEL = expenses.KINDS;
 
 function catOf(cats, id) {
-  return cats.find(c => c.id === id) || { name: 'ללא קטגוריה', color: '#94A3B8', icon: 'other' };
+  return cats.find(c => c.id === id) || { name: 'ללא קטגוריה', color: '#8B95A1', icon: 'other' };
 }
 
 // ---------- טופס רשומה ----------
@@ -113,7 +113,7 @@ function walletCard(trip, balances, cashRows, cats, segs) {
         el('div', { class: 'sub', text: codes.length ? 'יתרה לכל מטבע' : 'עדיין לא נמשך מזומן' }),
       ]),
       el('button', {
-        class: 'btn btn-primary', 'aria-label': 'הוצאה במזומן', html: icon('plus'),
+        class: 'btn btn-quiet', 'aria-label': 'הוצאה במזומן', html: icon('plus'),
         onClick: () => openExpenseSheet(trip, null, 'cashSpend'),
       }),
     ]),

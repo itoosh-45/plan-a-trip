@@ -320,7 +320,7 @@ function fxSection(currencies, known) {
 function openCategorySheet(tripId, existing) {
   const name = el('input', { class: 'field', type: 'text', value: existing?.name || '' });
   const color = el('input', {
-    class: 'field', type: 'color', value: existing?.color || '#06BCC1', style: 'height:48px; padding:4px',
+    class: 'field', type: 'color', value: existing?.color || '#009C89', style: 'height:48px; padding:4px',
   });
   let chosenIcon = existing?.icon || 'other';
 
