@@ -292,7 +292,7 @@ body {
 }
 .trip-card-head h3 {
   margin: 0;
-  font-size: var(--text-2xl);
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: var(--tracking-head);
 }

@@ -203,7 +203,7 @@ function taskRow(tripId, task, segs, currency) {
       ]),
     ]),
     el('button', {
-      class: 'icon-btn', style: 'color:var(--color-danger)',
+      class: 'icon-btn', style: 'color:var(--color-text-dim)',
       'aria-label': `הסר את ${task.title} מהרשימה`,
       html: icon('trash'), onClick: () => removeTaskFlow(tripId, task),
     }),
