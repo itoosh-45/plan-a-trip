@@ -67,7 +67,7 @@ export async function tripTotals(tripId) {
     .filter(r => !r.categoryId || !cats.some(c => c.id === r.categoryId))
     .reduce((s, r) => s + inTrip(r), 0));
   if (uncategorised) {
-    byCategory.push({ id: 'none', name: NO_CATEGORY, color: '#94A3B8', icon: 'other', amount: uncategorised });
+    byCategory.push({ id: 'none', name: NO_CATEGORY, color: '#8B95A1', icon: 'other', amount: uncategorised });
   }
 
   const balances = await expenses.walletBalances(tripId);
@@ -78,7 +78,9 @@ export async function tripTotals(tripId) {
   }
   cashInWallet = round2(cashInWallet);
   if (cashInWallet) {
-    byCategory.push({ id: 'cash', name: CASH_IN_WALLET, color: '#5A6672', icon: 'wallet', amount: cashInWallet });
+    // אפור נייטרלי בכוונה: מזומן שנותר בארנק אינו קטגוריית הוצאה,
+    // ולכן הוא לא לוקח גוון מפלטת הקטגוריות.
+    byCategory.push({ id: 'cash', name: CASH_IN_WALLET, color: '#8B95A1', icon: 'wallet', amount: cashInWallet });
   }
 
   const budget = await trips.budgetSummary(tripId);

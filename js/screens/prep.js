@@ -419,7 +419,7 @@ export async function mount(host, tripId) {
   ]);
   const currency = trip?.currency || 'ILS';
 
-  host.append(el('div', { class: 'card-gap', style: 'display:flex; gap:8px; overflow-x:auto; padding-block:4px' }, [
+  host.append(el('div', { class: 'card-gap filter-row', style: 'display:flex; gap:8px; overflow-x:auto; padding-block:4px' }, [
     el('button', {
       class: 'chip', 'aria-pressed': String(!urgencyFilter), text: 'כל הדחיפויות',
       onClick: () => { urgencyFilter = ''; refresh(); },

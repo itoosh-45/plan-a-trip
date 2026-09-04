@@ -25,30 +25,39 @@
   --font-app: 'Noto Sans Hebrew', -apple-system, 'SF Hebrew', system-ui, 'Segoe UI', sans-serif;
 
   /* סולם אחד לכל האפליקציה. אין גודל טקסט שלא מגיע מכאן. */
-  --text-2xl: 24px;   /* סכום בכרטיס סיכום */
-  --text-lg: 18px;    /* כותרת מסך */
+  --text-2xl: 28px;   /* סכום בכרטיס סיכום — גדול, אבל במשקל 500 */
+  --text-lg: 17px;    /* כותרת מסך */
   --text-base: 16px;  /* כפתורים ושדות — 16px מונע זום אוטומטי ב-iOS */
-  --text-sm: 14px;    /* גוף */
-  --text-xs: 12px;    /* כותרת כרטיס */
+  --text-sm: 14px;    /* שם של פריט בשורה */
+  --text-xs: 12px;    /* תווית משנית */
   --text-11: 11px;    /* מטא-דאטה */
+  --text-body: 13px;  /* גוף הטקסט */
 
-  --tracking-body: -0.01em;
+  /* ב-13px כיווץ אגרסיבי פוגע בקריאות של עברית */
+  --tracking-body: -0.005em;
   --tracking-head: -0.02em;
+  --tracking-num: -0.03em;  /* מספרים גדולים בלבד */
 
-  --color-bg: #FCFCFC;
+  /* הרקע אפור מובחן כדי שמשטח לבן יופרד ממנו בלי מסגרת ובלי צל */
+  --color-bg: #F4F5F7;
   --color-surface: #FFFFFF;
-  --color-surface-2: #F2F4F6;
-  --color-input: #F5F7F8;
-  --color-text: #000000;
-  --color-text-dim: #5A6672;
-  --color-accent: #06BCC1;
-  --color-highlight: #EE4266;
-  --color-border: rgba(0, 0, 0, 0.10);
-  --color-hairline: rgba(0, 0, 0, 0.06);
+  --color-surface-2: #EAECEF;
+  --color-input: #FFFFFF;
+  /* שחור מוחלט מוסיף קשיות; כמעט-שחור מרכך בלי לפגוע בניגודיות */
+  --color-text: #16191D;
+  --color-text-dim: #4A5461;
+  --color-text-mute: #5F6874;      /* מטא-דאטה, מונים, תוויות משניות */
+  --color-control-line: #8B95A1;   /* מסגרת של פקד לא-פעיל */
+  /* oklch מוריד רוויה בלי לשנות גוון: הטורקיז נשאר מזוהה ומפסיק לצעוק */
+  --color-accent: oklch(0.60 0.075 195);
+  --color-accent-press: oklch(0.52 0.075 195);
+  --color-highlight: #EE4266;      /* המילוי הרווי היחיד באפליקציה */
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-hairline: rgba(0, 0, 0, 0.055);
 
-  --color-danger: #D92D20;
-  --color-success: #0E9F6E;
-  --color-warning: #D97706;
+  --color-danger: oklch(0.55 0.14 27);
+  --color-success: oklch(0.62 0.09 160);
+  --color-warning: oklch(0.63 0.11 68);
 
   /* גרדיאנט כרטיס הטיול — נגזר מ---color-accent, בלי צבע חדש בפלטה */
   --gradient-trip: linear-gradient(
@@ -63,17 +72,19 @@
   --urgency-important: var(--color-warning);
   --urgency-normal: var(--color-accent);
 
-  --radius-card: 16px;
-  --radius-control: 12px;
+  --radius-card: 12px;
+  --radius-control: 10px;
 
+  /* הצל ירד מהכרטיסים. shadow-float נשאר רק למה שבאמת מרחף מעל התוכן. */
   --shadow-stamp: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 16px -4px rgba(16, 24, 40, 0.08);
+  --shadow-float: 0 1px 2px rgba(16, 24, 40, 0.05), 0 10px 24px -8px rgba(16, 24, 40, 0.14);
 
-  --space-screen-x: 16px;
-  --space-card-p: 16px;
-  --space-card-gap: 12px;
+  --space-screen-x: 18px;
+  --space-card-p: 14px;
+  --space-card-gap: 22px;   /* קבוצות מופרדות במרווח, לא במסגרת */
   --space-screen-bottom: 24px;
 
-  --nav-height: 64px;
+  --nav-height: 58px;
   --touch-min: 44px;
   --date-row-width: 75vw;
 }
