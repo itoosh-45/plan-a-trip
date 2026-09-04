@@ -14,6 +14,49 @@ export const URGENCY_BY_PRIORITY = { 'חובה': 'critical', 'רלוונטי': '
 /** הקטגוריה של משימה שלא הגיעה מהקטלוג, או שהמדור שלה כבר לא קיים בו. */
 export const OTHER = 'אחר';
 
+/**
+ * רשימה בשם חופשי חיה על רשומת הטיול, ולא בסטור משלה: היא שייכת לטיול,
+ * נמחקת איתו ונכנסת לגיבוי איתו, בלי שינוי סכמה.
+ * המזהה שלה יושב באותו שדה stage שבו יושבים שלושת השלבים הקבועים.
+ */
+export async function listsFor(tripId) {
+  const trip = await db.get(db.STORES.trips, tripId);
+  const custom = {};
+  for (const list of trip?.customLists || []) custom[list.id] = list.name;
+  return { ...STAGES, ...custom };
+}
+
+export async function addList(tripId, name) {
+  const clean = (name || '').trim();
+  if (!clean) throw new Error('לרשימה חייב להיות שם');
+  const trip = await db.get(db.STORES.trips, tripId);
+  if (!trip) throw new Error('הטיול לא נמצא');
+  const lists = trip.customLists || [];
+  if (lists.some(l => l.name === clean)) throw new Error('כבר קיימת רשימה בשם הזה');
+  const list = { id: `list-${crypto.randomUUID()}`, name: clean };
+  await db.put(db.STORES.trips, { ...trip, customLists: [...lists, list] });
+  return list;
+}
+
+/** מחיקת רשימה מוחקת גם את המשימות שבה. אין משימה בלי רשימה. */
+export async function removeList(tripId, listId) {
+  if (STAGES[listId]) throw new Error('אי אפשר למחוק שלב קבוע');
+  const trip = await db.get(db.STORES.trips, tripId);
+  if (!trip) throw new Error('הטיול לא נמצא');
+  const rows = await db.all(db.STORES.prepTasks, tripId);
+  for (const task of rows.filter(t => t.stage === listId)) {
+    await db.remove(db.STORES.prepTasks, task.id);
+  }
+  await db.put(db.STORES.trips, {
+    ...trip, customLists: (trip.customLists || []).filter(l => l.id !== listId),
+  });
+}
+
+async function assertStage(tripId, stage) {
+  const lists = await listsFor(tripId);
+  if (!lists[stage]) throw new Error(`קטגוריה לא מוכרת: ${stage}`);
+}
+
 const URGENCY_ORDER = { critical: 0, important: 1, normal: 2 };
 
 /**
@@ -65,7 +108,8 @@ export async function categoriesFor(stage) {
   const cat = await catalog.load();
   const out = [];
   for (const item of cat) {
-    if (STAGE_BY_PHASE[item.phase] !== stage) continue;
+    // רשימה בשם חופשי אינה קשורה לשלב, ולכן פתוחה לכל מדורי הקטלוג
+    if (STAGES[stage] && STAGE_BY_PHASE[item.phase] !== stage) continue;
     if (!out.includes(item.section)) out.push(item.section);
   }
   out.push(OTHER);
@@ -76,7 +120,7 @@ export async function saveTask(tripId, task) {
   const title = (task.title || '').trim();
   if (!title) throw new Error('למשימה חייבת להיות כותרת');
   const stage = task.stage || STAGE_BY_PHASE[task.phase] || 'before';
-  if (!STAGES[stage]) throw new Error(`קטגוריה לא מוכרת: ${stage}`);
+  await assertStage(tripId, stage);
   const urgency = task.urgency || URGENCY_BY_PRIORITY[task.priority] || 'normal';
   if (!URGENCY[urgency]) throw new Error(`רמת דחיפות לא מוכרת: ${urgency}`);
   return db.put(db.STORES.prepTasks, {
@@ -110,7 +154,7 @@ export async function setUrgency(tripId, taskId, urgency) {
 }
 
 export async function setStage(tripId, taskId, stage) {
-  if (!STAGES[stage]) throw new Error(`קטגוריה לא מוכרת: ${stage}`);
+  await assertStage(tripId, stage);
   return patch(tripId, taskId, { stage });
 }
 
@@ -119,7 +163,7 @@ export async function setStage(tripId, taskId, stage) {
  * ברשימה, ואת השלב והקטגוריה של הקבוצה שאליה נגרר.
  */
 export async function reorder(tripId, stage, category, orderedIds) {
-  if (!STAGES[stage]) throw new Error(`קטגוריה לא מוכרת: ${stage}`);
+  await assertStage(tripId, stage);
   const rows = await db.all(db.STORES.prepTasks, tripId);
   const byId = new Map(rows.map(r => [r.id, r]));
   const updates = [];
@@ -136,14 +180,15 @@ export async function removeTask(tripId, taskId) {
 }
 
 /** מוסיף פריטים מהקטלוג כמשימות עצמאיות. מדלג על catalogId שכבר קיים לטיול. */
-export async function addFromCatalog(tripId, catalogItems) {
+export async function addFromCatalog(tripId, catalogItems, stage) {
   const already = await usedCatalogIds(tripId);
   const toAdd = catalogItems.filter(c => !already.has(c.id));
   if (!toAdd.length) return [];
+  if (stage) await assertStage(tripId, stage);
   return db.bulkPut(db.STORES.prepTasks, toAdd.map(c => ({
     tripId,
     catalogId: c.id,
-    stage: STAGE_BY_PHASE[c.phase] || 'before',
+    stage: stage || STAGE_BY_PHASE[c.phase] || 'before',
     category: c.section || OTHER,
     urgency: URGENCY_BY_PRIORITY[c.priority] || 'normal',
     title: c.text,
