@@ -96,7 +96,9 @@ function enableDrag(node, tripId, task) {
 
   grip.addEventListener('pointerdown', event => {
     event.preventDefault();
-    grip.setPointerCapture(event.pointerId);
+    // לכידת המצביע נחמדה אך לא הכרחית: המאזינים יושבים על document ממילא,
+    // כך שגם דפדפן שמסרב ללכוד לא משאיר שורה תקועה במצב גרירה.
+    try { grip.setPointerCapture(event.pointerId); } catch { /* אין לכידה */ }
     node.classList.add('dragging');
     let target = null;
 
@@ -112,9 +114,9 @@ function enableDrag(node, tripId, task) {
     const onMove = ev => { target = zoneAt(ev); highlight(target); };
 
     const onUp = async ev => {
-      grip.removeEventListener('pointermove', onMove);
-      grip.removeEventListener('pointerup', onUp);
-      grip.removeEventListener('pointercancel', onUp);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
       node.classList.remove('dragging');
       highlight(null);
       const zone = zoneAt(ev) || target;
@@ -125,9 +127,9 @@ function enableDrag(node, tripId, task) {
       }
     };
 
-    grip.addEventListener('pointermove', onMove);
-    grip.addEventListener('pointerup', onUp);
-    grip.addEventListener('pointercancel', onUp);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
   });
 }
 
@@ -148,13 +150,16 @@ function taskRow(tripId, task, segs, currency) {
       onClick: () => openTaskSheet(tripId, task),
     }, [
       el('div', { text: task.title }),
-      el('div', { class: 'sub' }, [
-        el('span', { text: prep.URGENCY[task.urgency] || 'רגיל' }),
-        seg ? el('span', { text: ` · ${seg.city}` }) : null,
-        task.plannedAmount
-          ? el('span', { class: 'num', text: ` · ${fmtMoney(task.plannedAmount, currency)}` })
-          : null,
-      ]),
+      // רמת הדחיפות כבר נאמרת בכותרת האזור ובצבע הרקע — אין צורך לחזור עליה כאן
+      seg || task.plannedAmount
+        ? el('div', { class: 'sub' }, [
+            seg ? el('span', { text: seg.city }) : null,
+            seg && task.plannedAmount ? el('span', { text: ' · ' }) : null,
+            task.plannedAmount
+              ? el('span', { class: 'num', text: fmtMoney(task.plannedAmount, currency) })
+              : null,
+          ])
+        : null,
     ]),
     el('button', {
       class: 'icon-btn', 'aria-label': `העבר את ${task.title} לקטגוריה אחרת`,
@@ -192,7 +197,7 @@ export function openCatalogSheet(tripId, stage) {
   function catalogRow(item) {
     const isSel = selected.has(item.id);
     return el('button', {
-      class: 'chip', style: 'width:100%; justify-content:space-between; margin-block-start:6px; text-align:start',
+      class: 'chip wrap', style: 'width:100%; justify-content:space-between; margin-block-start:6px; text-align:start',
       'aria-pressed': String(isSel),
       onClick: () => {
         if (selected.has(item.id)) selected.delete(item.id); else selected.set(item.id, item);
@@ -299,7 +304,7 @@ export async function mount(host, tripId) {
     }, [
       el('span', {
         html: icon('chevronDown'),
-        style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : -90}deg)`,
+        style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : 90}deg)`,
       }),
       el('span', { class: 'grow', style: 'font-weight:700; font-size:16px', text: label }),
       el('span', { class: 'dim num', style: 'font-size:13px', text: `${done}/${tasks.length}` }),

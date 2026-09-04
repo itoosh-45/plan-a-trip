@@ -181,7 +181,7 @@ async function renderSegment(host, trip, seg) {
         onClick: () => { openDay = isOpen ? null : day; refresh(); },
       }, [
         el('span', { html: icon('chevronDown'),
-          style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : -90}deg)` }),
+          style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : 90}deg)` }),
         el('span', { class: 'grow', style: 'font-weight:700', text: fmtDate(day) }),
         el('span', { class: 'dim', style: 'font-size:13px',
           text: dayItems.length ? `${dayItems.length} פריטים` : 'אין תכנון' }),

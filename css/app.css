@@ -76,6 +76,11 @@ body {
 .chip {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+  max-width: 60vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   min-height: 36px;
   padding: 6px 12px;
   border-radius: var(--radius-control);
@@ -84,6 +89,11 @@ body {
   color: var(--color-text-dim);
   font-size: 14px;
   cursor: pointer;
+}
+.chip.wrap {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
 }
 .chip[aria-pressed="true"] {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
@@ -190,8 +200,9 @@ body {
 .topbar-row .field { flex: 1; font-weight: 700; }
 
 /* ---- שורת תאריכים: 75% מרוחב המסך, ממורכזת ---- */
+/* 75% מרוחב המסך, ולא מרוחב הכרטיס שמכיל אותה */
 .date-row {
-  width: var(--date-row-width);
+  width: min(var(--date-row-width), 100%);
   margin-inline: auto;
   display: flex;
   gap: 8px;
