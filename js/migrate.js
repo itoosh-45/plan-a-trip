@@ -4,6 +4,38 @@ import { STAGE_BY_PHASE, URGENCY_BY_PRIORITY } from './prep.js';
 
 export const SCHEMA_VERSION = 2;
 
+/**
+ * צבעי הקטגוריות הישנים ומה שבא במקומם. המפתח הוא הצבע הישן, ולכן קטגוריה
+ * שהמשתמש צבע בעצמו לא נוגעים בה — רק צבע שעדיין זהה לברירת המחדל הישנה מוחלף.
+ */
+const RECOLOR = {
+  '#EE4266': '#BC484F',
+  '#06BCC1': '#009C89',
+  '#D97706': '#CB8324',
+  '#0E9F6E': '#387A3D',
+  '#5A6672': '#547ECD',
+  '#DB2777': '#CE6196',
+  '#7C3AED': '#6A50A7',
+  '#2563EB': '#009AB4',
+  '#94A3B8': '#897B25',
+};
+
+/**
+ * החלפה חד-פעמית של פלטת הקטגוריות בטיולים שכבר קיימים. רצה בנפרד מ-run()
+ * ומסומנת בדגל משלה, כדי שלא תגרור הרצה חוזרת של מיגרציית הסכמה.
+ */
+export async function recolorCategories() {
+  if (await db.getSetting('categoryPalette', 0) >= 1) return { skipped: true };
+
+  const stale = (await db.all(db.STORES.categories))
+    .filter(c => RECOLOR[String(c.color).toUpperCase()])
+    .map(c => ({ ...c, color: RECOLOR[String(c.color).toUpperCase()] }));
+
+  if (stale.length) await db.bulkPut(db.STORES.categories, stale);
+  await db.setSetting('categoryPalette', 1);
+  return { recolored: stale.length };
+}
+
 const segmentFor = (segs, date, generalId) =>
   segs.find(s => s.kind !== 'general' && s.startDate <= date && date <= (s.endDate || s.startDate))?.id
   ?? generalId;
