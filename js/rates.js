@@ -3,6 +3,7 @@ import * as db from './db.js';
 /** כל השערים נשמרים מול שקל. שער מטבע-למטבע נגזר דרך השקל. */
 const BASE = 'ILS';
 const STALE_MS = 24 * 60 * 60 * 1000;
+const AUTO_KEY = 'lastAutoRates';
 
 export function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -79,6 +80,35 @@ export async function fetchRates(currencies) {
     }
   }
   return out;
+}
+
+/**
+ * רענון יומי ברקע, בלי לשאול ובלי להודיע.
+ * דורס רק שערים שנמשכו מהרשת או שאינם קיימים כלל. שער שהמשתמש הקליד ידנית
+ * הוא החלטה שלו — האוטומט לא נוגע בו, ורק הכפתור בהגדרות יכול להחליף אותו.
+ */
+export async function autoRefresh(currencies) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return { skipped: 'offline' };
+
+  const last = await db.getSetting(AUTO_KEY, null);
+  if (last && Date.now() - Date.parse(last) < STALE_MS) return { skipped: 'fresh' };
+
+  const eligible = [];
+  for (const raw of currencies || []) {
+    const cur = (raw || '').toUpperCase();
+    if (!cur || cur === BASE) continue;
+    const row = await db.get(db.STORES.fxRates, pairKey(cur));
+    if (!row || row.source !== 'manual') eligible.push(cur);
+  }
+  if (!eligible.length) {
+    await db.setSetting(AUTO_KEY, new Date().toISOString());
+    return { skipped: 'manual', saved: 0 };
+  }
+
+  const saved = await applyRates(await fetchRates(eligible));
+  // בלי שער אחד שנשמר לא חותמים את התאריך, כדי שהניסיון יחזור בטעינה הבאה
+  if (saved) await db.setSetting(AUTO_KEY, new Date().toISOString());
+  return { saved, tried: eligible.length };
 }
 
 /** שומר שערים שנמשכו ואושרו. */

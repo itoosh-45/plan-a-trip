@@ -1,6 +1,8 @@
 import { el, icon, toast, fmtDateRange } from './ui.js';
 import { listTrips, tripDates } from './trips.js';
 import * as migrate from './migrate.js';
+import * as rates from './rates.js';
+import * as cur from './currencies.js';
 
 const SCREENS = [
   { key: 'prep',     label: 'רשימת הכנה', iconName: 'check' },
@@ -111,13 +113,22 @@ function buildNav() {
   ));
 }
 
+/** רענון שערים יומי, שקט לגמרי. כישלון אינו מפריע לאפליקציה לעלות. */
+async function autoRefreshRates() {
+  try {
+    const res = await rates.autoRefresh(await cur.listActive());
+    if (res.saved) refresh();
+  } catch { /* אין רשת או שהשירות נפל — ננסה שוב בטעינה הבאה */ }
+}
+
 export async function boot() {
   buildNav();
   try { activeTrip = localStorage.getItem('activeTripId') || null; } catch { activeTrip = null; }
   const report = await migrate.run();
   if (!report.skipped && report.trips) toast('הנתונים הקיימים הותאמו למבנה החדש', 'success');
   document.addEventListener('data:changed', () => refresh());
-  window.addEventListener('online',  () => toast('חזרנו לרשת', 'success'));
+  window.addEventListener('online',  () => { toast('חזרנו לרשת', 'success'); autoRefreshRates(); });
   window.addEventListener('offline', () => toast('אין רשת. האפליקציה ממשיכה לעבוד.', 'warning'));
   await refresh();
+  autoRefreshRates();
 }

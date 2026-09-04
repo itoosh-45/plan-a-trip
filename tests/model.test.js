@@ -1,5 +1,6 @@
 import { suite, assertEqual, assertTrue, assertThrows } from './harness.js';
 import * as db from '../js/db.js';
+import * as rates from '../js/rates.js';
 import * as trips from '../js/trips.js';
 import * as it from '../js/itinerary.js';
 import * as cur from '../js/currencies.js';
@@ -160,6 +161,42 @@ export default async function () {
 
   s.test('לכל מטבע ברירת מחדל יש שם בעברית', async () => {
     assertEqual(cur.DEFAULT_CURRENCIES.filter(c => !cur.NAMES[c]), []);
+  });
+
+  // ---- רענון שערים אוטומטי ----
+
+  s.test('הרענון האוטומטי אינו נוגע בשער שהוזן ידנית', async () => {
+    await db.wipe();
+    await rates.setManualRate('USD', 3.9);
+    await db.put(db.STORES.fxRates,
+      { pair: 'EUR_ILS', rate: 4.0, ts: new Date().toISOString(), source: 'frankfurter' });
+
+    // מדמים רשת מנותקת: הפונקציה יוצאת בלי לגעת בכלום.
+    // ההגדרה יושבת על navigator עצמו ומאפילה על ה-getter שבפרוטוטייפ,
+    // ולכן מחיקתה בסוף מחזירה את ההתנהגות האמיתית.
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    try {
+      const res = await rates.autoRefresh(['USD', 'EUR']);
+      assertEqual(res.skipped, 'offline');
+      assertEqual((await rates.getRate('USD')).rate, 3.9, 'השער הידני נדרס');
+    } finally {
+      delete navigator.onLine;
+    }
+    assertEqual(navigator.onLine, true, 'הדמיית הניתוק לא בוטלה');
+  });
+
+  s.test('רענון שכבר רץ היום אינו רץ שוב', async () => {
+    await db.wipe();
+    await db.setSetting('lastAutoRates', new Date().toISOString());
+    assertEqual((await rates.autoRefresh(['USD'])).skipped, 'fresh');
+  });
+
+  s.test('כשכל השערים ידניים אין מה למשוך', async () => {
+    await db.wipe();
+    await rates.setManualRate('USD', 3.9);
+    const res = await rates.autoRefresh(['ILS', 'USD']);
+    assertEqual([res.skipped, res.saved], ['manual', 0]);
+    assertEqual((await rates.getRate('USD')).rate, 3.9);
   });
 
   await s.done();

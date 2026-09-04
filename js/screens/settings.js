@@ -375,6 +375,47 @@ async function exportExcel(trip) {
   } catch (err) { toast(err.message, 'error'); }
 }
 
+/** שחזור טיול אחד. אם הוא כבר קיים במכשיר — שואלים מה לעשות איתו. */
+async function restoreOneTrip(payload, trip) {
+  const existing = await trips.getTrip(trip.id);
+  let mode = 'replace';
+
+  if (existing) {
+    mode = await new Promise(resolve => {
+      let settled = false;
+      const finish = v => { if (!settled) { settled = true; s.close(); resolve(v); } };
+      const s = sheet({
+        title: `"${trip.name}" כבר קיים במכשיר`,
+        body: el('div', {}, [
+          el('p', { class: 'sub',
+            text: 'החלפה מוחקת את הטיול שבמכשיר על כל ההוצאות והרשימות שלו. עותק משאיר את שניהם.' }),
+          el('button', {
+            class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px',
+            text: 'הוסף כעותק נפרד', onClick: () => finish('copy'),
+          }),
+          el('button', {
+            class: 'btn btn-danger btn-block', style: 'margin-block-start:8px',
+            text: 'החלף את הקיים', onClick: () => finish('replace'),
+          }),
+        ]),
+        actions: [
+          el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => finish(null) }),
+        ],
+      });
+    });
+    if (!mode) return false;
+  }
+
+  try {
+    await backup.restoreTrip(payload, trip.id, mode);
+    toast(mode === 'copy' ? 'הטיול נוסף כעותק' : 'הטיול שוחזר', 'success');
+    return true;
+  } catch (err) {
+    toast(err.message, 'error');
+    return false;
+  }
+}
+
 function openImportPreview(trip, parsed) {
   const s = sheet({
     title: 'אישור ייבוא',
@@ -426,9 +467,9 @@ function importExcel(trip) {
   });
 }
 
-async function runBackup() {
+async function runBackup(tripId) {
   try {
-    const res = await backup.toFile();
+    const res = await backup.toFile(tripId);
     if (res.method === 'share') toast('הגיבוי נשלח לשיתוף', 'success');
     else if (res.method === 'download') toast('קובץ הגיבוי הורד', 'success');
   } catch (err) { toast(err.message, 'error'); }
@@ -438,21 +479,38 @@ function runRestore() {
   pickFile('.json,application/json', async file => {
     const parsed = await backup.parseBackup(file);
     if (!parsed.ok) { toast(parsed.error, 'error'); return; }
-    const rows = Object.entries(parsed.preview).filter(([, n]) => n > 0);
+    const inFile = backup.tripsIn(parsed.payload);
     const s = sheet({
       title: 'שחזור מגיבוי',
       body: el('div', {}, [
-        el('p', { class: 'row-title', style: 'color:var(--color-danger); margin:0 0 12px',
-          text: 'השחזור מוחק ומחליף את כל הנתונים הקיימים במכשיר הזה — כל הטיולים.' }),
-        rows.length
-          ? el('div', {}, rows.map(([store, n]) => el('div', { text: `${store}: ${n}` })))
-          : el('div', { class: 'dim', text: 'קובץ הגיבוי ריק.' }),
+        el('p', { class: 'sub', style: 'margin:0 0 12px',
+          text: inFile.length
+            ? 'אפשר לשחזר טיול אחד מהקובץ בלי לגעת בשאר הטיולים במכשיר, או להחליף את הכול.'
+            : 'לא נמצאו טיולים בקובץ.' }),
+
+        ...inFile.map(trip => el('div', { class: 'row' }, [
+          el('span', { class: 'grow' }, [
+            el('span', { class: 'row-title', style: 'display:block', text: trip.name }),
+            el('span', { class: 'sub',
+              text: `${trip.counts.segments} יעדים · ${trip.counts.expenses} הוצאות · ${trip.counts.prepTasks} משימות` }),
+          ]),
+          el('button', {
+            class: 'btn btn-tertiary', text: 'שחזר',
+            onClick: async () => {
+              const done = await restoreOneTrip(parsed.payload, trip);
+              if (done) { s.close(); refresh(); }
+            },
+          }),
+        ])),
+
+        el('p', { class: 'sub hairline', style: 'color:var(--color-danger); margin-block-start:16px; padding-block-start:12px',
+          text: 'שחזור מלא מוחק ומחליף את כל הנתונים במכשיר — כל הטיולים, כולל כאלה שאינם בקובץ.' }),
       ]),
       actions: [
         el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
-        el('button', { class: 'btn btn-danger btn-block', text: 'שחזר והחלף הכול', onClick: async () => {
+        el('button', { class: 'btn btn-danger btn-block', text: 'החלף הכול', onClick: async () => {
           const ok = await confirmDanger({
-            title: 'אישור סופי לשחזור',
+            title: 'אישור סופי לשחזור מלא',
             body: 'כל הנתונים הנוכחיים יימחקו ויוחלפו בתוכן הגיבוי. אין דרך לבטל.',
             confirmLabel: 'שחזר לצמיתות',
           });
@@ -548,13 +606,22 @@ export async function mount(host, tripId) {
 
   host.append(section(
     'גיבוי ושחזור',
-    'קובץ JSON מלא של כל הטיולים. הגיבוי באחריותך ובלחיצת כפתור — לא אוטומטי.',
-    [el('div', { style: 'display:flex; gap:8px' }, [
-      el('button', { class: 'btn btn-secondary btn-block', html: `${icon('share')}<span>גיבוי עכשיו</span>`,
-        onClick: runBackup }),
-      el('button', { class: 'btn btn-danger btn-block', html: `${icon('refresh')}<span>שחזור מקובץ</span>`,
-        onClick: runRestore }),
-    ])],
+    'קובץ JSON, בלחיצת כפתור ובאחריותך — אין גיבוי אוטומטי. גיבוי של טיול בודד אינו כולל מטבעות ושערים, שהם של המכשיר ולא של הטיול.',
+    [
+      el('div', { style: 'display:flex; gap:8px' }, [
+        el('button', { class: 'btn btn-secondary btn-block', html: `${icon('share')}<span>גבה הכול</span>`,
+          onClick: () => runBackup() }),
+        el('button', { class: 'btn btn-danger btn-block', html: `${icon('refresh')}<span>שחזור מקובץ</span>`,
+          onClick: runRestore }),
+      ]),
+      trip
+        ? el('button', {
+            class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px',
+            html: `${icon('download')}<span>גבה רק את "${trip.name}"</span>`,
+            onClick: () => runBackup(trip.id),
+          })
+        : null,
+    ],
   ));
 
   host.append(section(

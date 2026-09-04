@@ -221,19 +221,29 @@ export function openCatalogSheet(tripId, stage) {
   let used = new Set();
 
   const body = el('div');
+
+  const addSelected = async () => {
+    const items = [...selected.values()];
+    if (!items.length) { s.close(); return; }
+    const added = await prep.addFromCatalog(tripId, items, stage);
+    toast(added.length === 1 ? 'נוספה משימה אחת' : `נוספו ${added.length} משימות`, 'success');
+    s.close();
+    refresh();
+  };
+
+  // הקטלוג ארוך, ולכן כפתור ההוספה יושב גם בראש הרשימה וגם בתחתיתה
+  const addButton = () => el('button', {
+    class: 'btn btn-primary btn-block',
+    text: selected.size ? `הוסף ${selected.size} לרשימה` : 'הוסף נבחרים',
+    onClick: addSelected,
+  });
+
   const s = sheet({
     title: 'הוספה מהקטלוג',
     body,
     actions: [
       el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
-      el('button', { class: 'btn btn-primary btn-block', text: 'הוסף נבחרים', onClick: async () => {
-        const items = [...selected.values()];
-        if (!items.length) { s.close(); return; }
-        const added = await prep.addFromCatalog(tripId, items, stage);
-        toast(added.length === 1 ? 'נוספה משימה אחת' : `נוספו ${added.length} משימות`, 'success');
-        s.close();
-        refresh();
-      } }),
+      addButton(),
     ],
   });
 
@@ -268,6 +278,7 @@ export function openCatalogSheet(tripId, stage) {
   async function render() {
     used = await prep.usedCatalogIds(tripId);
     body.replaceChildren();
+    if (selected.size) body.append(addButton());
     body.append(el('div', { class: 'field-row' }, [
       el('input', {
         class: 'field', type: 'search', placeholder: 'חיפוש בקטלוג', value: view.query,

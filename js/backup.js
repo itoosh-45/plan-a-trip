@@ -2,21 +2,44 @@ import * as db from './db.js';
 
 const MIME = 'application/json';
 
-function backupFilename() {
-  return `trip-planner-backup-${new Date().toISOString().slice(0, 10)}.json`;
+const today = () => new Date().toISOString().slice(0, 10);
+const safe = name => (name || '').replace(/[\\/:*?"<>|]/g, '-').trim() || 'trip';
+
+function backupFilename(tripName) {
+  return tripName
+    ? `trip-planner-${safe(tripName)}-${today()}.json`
+    : `trip-planner-backup-${today()}.json`;
 }
 
-export async function buildBackup() {
+/**
+ * חותך מהגיבוי את מה ששייך לטיול אחד. שערי המרה והגדרות אינם נכנסים:
+ * הם שייכים למכשיר ולא לטיול, וכל רשומת כסף כבר נושאת את השער שנצרב עליה.
+ */
+function sliceTrip(stores, tripId) {
+  const out = { trips: (stores.trips || []).filter(t => t.id === tripId) };
+  for (const name of db.TRIP_SCOPED) {
+    out[name] = (stores[name] || []).filter(r => r.tripId === tripId);
+  }
+  return out;
+}
+
+/** גיבוי של הכול, או של טיול אחד כשמועבר tripId. */
+export async function buildBackup(tripId) {
   const dump = await db.exportAll();
-  return { json: JSON.stringify(dump, null, 1), filename: backupFilename() };
+  if (!tripId) return { json: JSON.stringify(dump, null, 1), filename: backupFilename() };
+
+  const trip = (dump.stores.trips || []).find(t => t.id === tripId);
+  if (!trip) throw new Error('הטיול לא נמצא');
+  const payload = { ...dump, stores: sliceTrip(dump.stores, tripId) };
+  return { json: JSON.stringify(payload, null, 1), filename: backupFilename(trip.name) };
 }
 
 /**
  * גיבוי ידני ביד המשתמש: מנסה iOS Share Sheet קודם (navigator.share עם קובץ),
  * ונופל להורדת קובץ אם אין תמיכה או שהשיתוף נכשל מסיבה שאינה ביטול משתמש.
  */
-export async function toFile() {
-  const { json, filename } = await buildBackup();
+export async function toFile(tripId) {
+  const { json, filename } = await buildBackup(tripId);
   const file = new File([json], filename, { type: MIME });
 
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -75,4 +98,62 @@ export async function parseBackup(file) {
 /** משחזר גיבוי שאושר — מחליף את כל הנתונים במכשיר (כל הטיולים). */
 export async function restore(payload) {
   return db.importAll(payload, 'replace');
+}
+
+/** הטיולים שיושבים בקובץ, עם מונים, כדי שאפשר יהיה לבחור מה לשחזר. */
+export function tripsIn(payload) {
+  const stores = payload?.stores || {};
+  return (stores.trips || []).map(trip => ({
+    id: trip.id,
+    name: trip.name,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    counts: {
+      segments: (stores.segments || []).filter(r => r.tripId === trip.id).length,
+      items: (stores.items || []).filter(r => r.tripId === trip.id).length,
+      expenses: (stores.expenses || []).filter(r => r.tripId === trip.id).length,
+      prepTasks: (stores.prepTasks || []).filter(r => r.tripId === trip.id).length,
+    },
+  }));
+}
+
+// כל ההפניות בין רשומות בסכימה. מזהה חדש חייב להחליף גם אותן, אחרת עותק
+// של טיול יצביע על היעדים והקטגוריות של המקור.
+const REFS = ['tripId', 'segmentId', 'categoryId', 'walletId'];
+
+function remapIds(stores, rename) {
+  const map = new Map();
+  const swap = id => {
+    if (!id) return id;
+    if (!map.has(id)) map.set(id, crypto.randomUUID());
+    return map.get(id);
+  };
+  const out = {};
+  for (const [name, rows] of Object.entries(stores)) {
+    out[name] = rows.map(row => {
+      const copy = { ...row, id: swap(row.id) };
+      for (const ref of REFS) if (copy[ref]) copy[ref] = swap(copy[ref]);
+      return copy;
+    });
+  }
+  if (rename && out.trips?.length) out.trips[0] = { ...out.trips[0], name: rename };
+  return out;
+}
+
+/**
+ * משחזר טיול אחד מתוך קובץ בלי לגעת בשאר הטיולים במכשיר.
+ *   'replace' — מוחק את הטיול הקיים באותו מזהה וכותב את זה שבקובץ.
+ *   'copy'    — כותב אותו כטיול נוסף, עם מזהים חדשים לכל רשומה.
+ */
+export async function restoreTrip(payload, tripId, mode = 'replace') {
+  const stores = sliceTrip(payload?.stores || {}, tripId);
+  if (!stores.trips.length) throw new Error('הטיול אינו נמצא בקובץ');
+
+  if (mode === 'copy') {
+    const name = `${stores.trips[0].name} (עותק)`;
+    return db.importAll({ stores: remapIds(stores, name) }, 'merge');
+  }
+
+  await db.deleteTrip(tripId);
+  return db.importAll({ stores }, 'merge');
 }
