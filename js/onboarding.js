@@ -36,7 +36,7 @@ export function openTripWizard(existing) {
     body.replaceChildren();
     actions.replaceChildren();
 
-    body.append(el('div', { class: 'dim', style: 'font-size:13px; margin-block-end:8px',
+    body.append(el('div', { class: 'sub', style: 'margin-block-end:8px',
       text: `שלב ${step + 1} מתוך ${STEPS.length} · ${STEPS[step]}` }));
 
     if (step === 0) await stepDetails();
@@ -75,7 +75,7 @@ export function openTripWizard(existing) {
       el('label', { class: 'field-label', style: 'margin-block-start:12px', text: 'טווח התאריכים של הטיול' }),
       range.node,
       field('מטבע ראשי', currency),
-      el('p', { class: 'dim', style: 'font-size:13px',
+      el('p', { class: 'sub',
         text: 'התאריכים כאן הם מקור האמת לכל לוח הזמנים. אפשר להשלים אותם אחר כך.' }),
     );
 
@@ -110,7 +110,7 @@ export function openTripWizard(existing) {
       segs.length
         ? el('div', {}, segs.map(seg => el('div', { class: 'row' }, [
             el('div', { class: 'grow' }, [
-              el('div', { style: 'font-weight:600', text: seg.city }),
+              el('div', { class: 'row-title', text: seg.city }),
               el('div', { class: 'sub', text: fmtDateRange(seg.startDate, seg.endDate) }),
             ]),
             el('button', {

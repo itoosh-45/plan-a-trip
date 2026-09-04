@@ -43,7 +43,7 @@ async function buildTopbar() {
   if (!all.length) {
     activeTrip = null;
     return el('div', { class: 'topbar-row' }, [
-      el('div', { class: 'grow', style: 'font-weight:700', text: 'תכנון טיול ותקציב' }),
+      el('div', { class: 'grow row-title', text: 'תכנון טיול ותקציב' }),
       settingsBtn,
     ]);
   }
@@ -63,9 +63,9 @@ async function buildTopbar() {
   return el('div', {}, [
     el('div', { class: 'topbar-row' }, [select, settingsBtn]),
     startDate
-      ? el('div', { class: 'dim', style: 'margin-block-start:6px; font-size:14px',
+      ? el('div', { class: 'dim', style: 'margin-block-start:6px',
           text: fmtDateRange(startDate, endDate) })
-      : el('div', { class: 'dim', style: 'margin-block-start:6px; font-size:14px',
+      : el('div', { class: 'dim', style: 'margin-block-start:6px',
           text: 'טרם הוגדרו תאריכים לטיול' }),
   ]);
 }

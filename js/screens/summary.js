@@ -27,14 +27,14 @@ function statTile(label, value, tone = '') {
             background:${tone || 'var(--color-surface-2)'}`,
   }, [
     el('div', { class: 'sub', style: 'margin:0', text: label }),
-    el('div', { class: 'num', style: 'font-size:20px; font-weight:700; margin-block-start:4px', text: value }),
+    el('div', { class: 'num stat-value', text: value }),
   ]);
 }
 
 export async function mount(host, tripId) {
   if (!tripId) {
     host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'אין עדיין טיול' }),
+      el('div', { class: 'empty-title', text: 'אין עדיין טיול' }),
       el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי לראות סיכום.' }),
     ], 'card-gap'));
     return;
@@ -46,7 +46,7 @@ export async function mount(host, tripId) {
   const c = trip.currency;
 
   host.append(card([
-    el('div', { style: 'font-weight:700; font-size:18px', text: trip.name }),
+    el('div', { class: 'screen-title', text: trip.name }),
     trip.startDate
       ? el('div', { class: 'sub', text: fmtDateRange(trip.startDate, trip.endDate) })
       : null,
@@ -69,7 +69,7 @@ export async function mount(host, tripId) {
   if (sum.byCategory.length) {
     const canvas = el('canvas', { style: 'max-height:220px' });
     host.append(card([
-      el('div', { style: 'font-weight:700; margin-block-end:12px', text: 'פילוח לפי קטגוריה' }),
+      el('div', { class: 'card-title', text: 'פילוח לפי קטגוריה' }),
       canvas,
       ...sum.byCategory.map(row => el('div', { class: 'row' }, [
         el('span', { class: 'swatch', style: `background:${row.color}` }),
@@ -78,7 +78,7 @@ export async function mount(host, tripId) {
           el('span', { class: 'sub',
             text: `${Math.round((row.amount / (sum.total || 1)) * 100)}% מסך ההוצאות` }),
         ]),
-        el('span', { class: 'num', style: 'font-weight:700', text: fmtMoney(row.amount, c) }),
+        el('span', { class: 'num money', text: fmtMoney(row.amount, c) }),
       ])),
       el('div', { class: 'sub', style: 'margin-block-start:8px',
         text: 'משיכות המזומן מתפרקות כאן לפי ההוצאות במזומן שנרשמו בפועל. מה שטרם הוצא מופיע כ"מזומן בארנק".' }),
@@ -87,12 +87,12 @@ export async function mount(host, tripId) {
   }
 
   host.append(card([
-    el('div', { style: 'font-weight:700; margin-block-end:4px', text: 'הוצאות לפי יעד' }),
+    el('div', { class: 'card-title', text: 'הוצאות לפי יעד' }),
     ...sum.bySegment.map(seg => {
       const pct = seg.allocation ? Math.min(Math.round((seg.amount / seg.allocation) * 100), 100) : 0;
       return el('div', { style: 'padding-block:12px; border-block-start:1px solid var(--color-hairline)' }, [
         el('div', { style: 'display:flex; align-items:center; gap:8px' }, [
-          el('span', { class: 'grow', style: 'font-weight:700', text: seg.city }),
+          el('span', { class: 'grow row-title', text: seg.city }),
           seg.allocation
             ? el('span', { class: `pill ${seg.over ? 'over' : 'ok'}`,
                 text: seg.over ? 'חריגה' : 'בתקציב' })
@@ -111,7 +111,7 @@ export async function mount(host, tripId) {
   ], 'card-gap'));
 
   host.append(card([
-    el('div', { style: 'font-weight:700; margin-block-end:8px', text: 'תקציב' }),
+    el('div', { class: 'card-title', text: 'תקציב' }),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'תקרה' }),
       el('span', { class: 'num', text: fmtMoney(sum.ceiling, c) }),

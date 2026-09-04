@@ -1,5 +1,5 @@
 // מטמון האפליקציה. שינוי המספר כאן מפיל את המטמון הישן בהתקנה הבאה.
-const CACHE = 'trip-planner-v3';
+const CACHE = 'trip-planner-v4';
 
 const SHELL = [
   './',
@@ -7,6 +7,8 @@ const SHELL = [
   './manifest.json',
   './css/tokens.css',
   './css/app.css',
+  './fonts/noto-sans-hebrew-hebrew.woff2',
+  './fonts/noto-sans-hebrew-latin.woff2',
   './data/prep-catalog.json',
   './vendor/chart.umd.js',
   './vendor/xlsx.full.min.js',
