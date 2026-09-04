@@ -48,7 +48,7 @@ function tripCard(trip, totals, isActive) {
       el('span', { class: 'dim', text: `סה"כ הוצאות (${totals.count})` }),
       el('span', { class: 'total num', text: fmtMoney(totals.amount, trip.currency) }),
     ]),
-    el('div', { style: 'display:flex; gap:8px; padding:0 16px 16px' }, [
+    el('div', { style: 'display:flex; gap:8px; padding:0 14px 10px' }, [
       el('button', {
         class: 'btn btn-tertiary btn-block',
         text: isActive ? 'הטיול הפעיל' : 'עבור לטיול',

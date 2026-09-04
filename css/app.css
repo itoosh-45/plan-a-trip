@@ -307,8 +307,8 @@ body {
   position: relative;
   background: var(--gradient-trip);
   color: #fff;
-  padding: 20px var(--space-card-p);
-  min-height: 108px;
+  padding: 8px var(--space-card-p);
+  min-height: 52px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -328,10 +328,11 @@ body {
 }
 .trip-card-edit {
   position: absolute;
-  inset-block-start: 12px;
-  inset-inline-end: 12px;
-  min-width: var(--touch-min);
-  min-height: var(--touch-min);
+  inset-block-start: 9px;
+  inset-inline-end: 10px;
+  width: 30px;
+  height: 30px;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -341,11 +342,14 @@ body {
   color: #fff;
   cursor: pointer;
 }
+/* אזור המגע נשאר 44px גם כשהכפתור מצויר קטן */
+.trip-card-edit::after { content: ''; position: absolute; inset: -7px; }
+.trip-card-edit svg { width: 17px; height: 17px; }
 .trip-card-currency {
   position: absolute;
-  inset-block-start: 58px;
-  inset-inline-end: 12px;
-  padding: 6px 12px;
+  inset-block-start: 12px;
+  inset-inline-end: 46px;
+  padding: 3px 9px;
   border-radius: var(--radius-control);
   background: rgba(0, 0, 0, 0.32);
   color: #fff;
@@ -354,13 +358,14 @@ body {
   letter-spacing: 0.04em;
 }
 .trip-card-body {
-  padding: var(--space-card-p);
+  padding: 10px var(--space-card-p);
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
-.trip-card-body .total { font-size: var(--text-2xl); font-weight: 500; letter-spacing: var(--tracking-num); }
+.trip-card-body .total { font-size: var(--text-2xl); font-weight: 500; line-height: 1.15;
+                          letter-spacing: var(--tracking-num); }
 .trip-card[aria-current="true"] { outline: 2px solid var(--color-accent); }
 
 /* ---- דחיפות ברשימת ההכנה ---- */
