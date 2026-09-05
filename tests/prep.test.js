@@ -12,16 +12,17 @@ export default async function () {
   const s = suite('רשימת הכנה');
   await db.useTestDatabase();
 
-  s.test('שלוש קטגוריות ושלוש רמות דחיפות בלבד', () => {
-    assertEqual(Object.keys(prep.STAGES), ['before', 'during', 'after']);
+  s.test('ארבע רשימות קבועות ושלוש רמות דחיפות בלבד', () => {
+    assertEqual(Object.keys(prep.STAGES), ['before', 'during', 'after', 'gear']);
     assertEqual(Object.keys(prep.URGENCY), ['critical', 'important', 'normal']);
   });
 
-  s.test('ארבעת שלבי הקטלוג ממופים לשלוש הקטגוריות, ו"בדרך" נכנס ל"לפני"', () => {
+  s.test('חמשת שלבי הקטלוג ממופים לרשימות, ו"בדרך" נכנס ל"לפני"', () => {
     assertEqual(prep.STAGE_BY_PHASE['לפני'], 'before');
     assertEqual(prep.STAGE_BY_PHASE['בדרך'], 'before');
     assertEqual(prep.STAGE_BY_PHASE['בשהות'], 'during');
     assertEqual(prep.STAGE_BY_PHASE['בחזרה'], 'after');
+    assertEqual(prep.STAGE_BY_PHASE['ציוד מיוחד'], 'gear');
   });
 
   s.test('addFromCatalog ממפה עדיפות לדחיפות', async () => {
@@ -155,8 +156,11 @@ export default async function () {
     assertTrue(before.includes('אריזה'), 'אריזה חסרה בשלב לפני');
     assertTrue(before.includes('בדרך'), 'המדור של יום הטיסה חסר בשלב לפני');
     assertEqual(before[before.length - 1], prep.OTHER);
+    assertTrue(!before.includes('ציוד סקי'), 'מדור הציוד נשאר בשלב לפני');
     const after = await prep.categoriesFor('after');
     assertTrue(!after.includes('אריזה'), 'מדור של לפני דלף לשלב בחזרה');
+    const gear = await prep.categoriesFor('gear');
+    assertEqual(gear, ['ציוד לטרקים', 'ציוד סקי', prep.OTHER]);
   });
 
   s.test('reorder קובע סדר מפורש שגובר על הדחיפות', async () => {
@@ -203,11 +207,11 @@ export default async function () {
 
   // ---- רשימות בשם חופשי ----
 
-  s.test('רשימה חדשה נוספת לשלושת השלבים הקבועים', async () => {
+  s.test('רשימה חדשה נוספת לארבע הרשימות הקבועות', async () => {
     const t = await freshTrip();
     const list = await prep.addList(t.id, 'ציוד סקי');
     const lists = await prep.listsFor(t.id);
-    assertEqual(Object.keys(lists), ['before', 'during', 'after', list.id]);
+    assertEqual(Object.keys(lists), ['before', 'during', 'after', 'gear', list.id]);
     assertEqual(lists[list.id], 'ציוד סקי');
   });
 
@@ -261,7 +265,7 @@ export default async function () {
     await prep.removeList(t.id, list.id);
     assertEqual((await prep.listTasks(t.id)).map(x => x.title), ['נשארת']);
     assertTrue(!(await prep.usedCatalogIds(t.id)).has('p0001'), 'הפריט לא חזר לקטלוג');
-    assertEqual(Object.keys(await prep.listsFor(t.id)), ['before', 'during', 'after']);
+    assertEqual(Object.keys(await prep.listsFor(t.id)), ['before', 'during', 'after', 'gear']);
   });
 
   s.test('שלב קבוע אינו ניתן למחיקה', async () => {

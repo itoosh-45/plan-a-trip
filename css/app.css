@@ -187,7 +187,7 @@ body {
 #nav {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: var(--color-surface);
   border-block-start: 1px solid var(--color-hairline);
   padding-block-end: env(safe-area-inset-bottom);
@@ -231,11 +231,12 @@ body {
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-block-end: 12px; }
 .sheet-title { font-size: var(--text-lg); font-weight: 600; letter-spacing: var(--tracking-head); margin: 0; }
 
+/* מעל החלונות (40): שגיאה שנזרקת מטופס בתוך חלון חייבת להיראות. */
 #toasts {
   position: fixed;
   inset-inline: var(--space-screen-x);
   inset-block-end: calc(var(--nav-height) + 16px + env(safe-area-inset-bottom));
-  z-index: 20;
+  z-index: 60;
   pointer-events: none;
 }
 .toast {
@@ -273,6 +274,7 @@ body {
   display: block;
   padding: 12px var(--space-screen-x) 0;
 }
+.topbar-logo { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; }
 .topbar-row { display: flex; align-items: center; gap: 8px; }
 /* בורר הטיול נשאר select נייטיבי, ומפסיק להיראות כמו שדה טופס. */
 .topbar-row .field {

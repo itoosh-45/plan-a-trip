@@ -25,9 +25,19 @@ export default async function () {
   s.test('התפלגות השלבים תואמת לאפיון', () => {
     const count = p => cat.filter(x => x.phase === p).length;
     assertEqual(
-      { before: count('לפני'), onWay: count('בדרך'), during: count('בשהות'), back: count('בחזרה') },
-      { before: 368, onWay: 45, during: 157, back: 43 }
+      {
+        before: count('לפני'), onWay: count('בדרך'), during: count('בשהות'),
+        back: count('בחזרה'), gear: count('ציוד מיוחד'),
+      },
+      { before: 274, onWay: 45, during: 157, back: 43, gear: 94 }
     );
+  });
+
+  s.test('ציוד לטרקים וציוד סקי יושבים כולם בשלב "ציוד מיוחד"', () => {
+    const gear = cat.filter(x => x.section === 'ציוד לטרקים' || x.section === 'ציוד סקי');
+    assertEqual(gear.length, 94);
+    assertEqual(gear.filter(x => x.phase !== 'ציוד מיוחד').length, 0);
+    assertEqual(cat.filter(x => x.phase === 'ציוד מיוחד' && x.section === 'אריזה').length, 0);
   });
 
   s.test('העדיפויות הן מתוך שלושת הערכים המותרים בלבד', () => {

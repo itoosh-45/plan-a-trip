@@ -22,7 +22,7 @@ export async function byId() {
   return index;
 }
 
-const PHASE_ORDER = ['לפני', 'בדרך', 'בשהות', 'בחזרה'];
+const PHASE_ORDER = ['לפני', 'בדרך', 'בשהות', 'בחזרה', 'ציוד מיוחד'];
 
 function uniqueInOrder(values) {
   const seen = new Set();

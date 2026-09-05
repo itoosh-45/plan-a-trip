@@ -63,12 +63,13 @@ export function openTripWizard(existing) {
 
   // ---- שלב 1: שם, תאריכים, מטבע ראשי ----
   async function stepDetails() {
-    const currencies = await cur.listActive();
     const name = el('input', { class: 'field', type: 'text', value: trip?.name || '',
       placeholder: 'לדוגמה: תאילנד 2027' });
     const range = dateRange(trip?.startDate, trip?.endDate);
-    const currency = el('select', { class: 'field' }, currencies.map(c =>
-      el('option', { value: c, selected: (trip?.currency || 'ILS') === c, text: `${c} · ${cur.NAMES[c] || ''}` })));
+    // כל המטבעות, לא רק הפעילים: מי שנוסע לפרו לא אמור לעבור דרך ההגדרות
+    // כדי למצוא את הסול. בשמירה המטבע שנבחר מופעל אם עדיין אינו פעיל.
+    const currency = el('select', { class: 'field' }, Object.keys(cur.NAMES).map(c =>
+      el('option', { value: c, selected: (trip?.currency || 'ILS') === c, text: cur.label(c) })));
 
     body.append(
       field('שם הטיול', name),
@@ -84,6 +85,8 @@ export function openTripWizard(existing) {
       nextLabel: trip ? 'שמור והמשך' : 'צור והמשך',
       onNext: async () => {
         try {
+          const active = await cur.listActive();
+          if (!active.includes(currency.value)) await cur.setActive([...active, currency.value]);
           const data = {
             name: name.value,
             startDate: range.start.value || null,

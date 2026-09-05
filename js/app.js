@@ -4,11 +4,14 @@ import * as migrate from './migrate.js';
 import * as rates from './rates.js';
 import * as cur from './currencies.js';
 
+// חמישה טאבים. התוויות קצרות בכוונה — ברוחב טלפון תווית בת שתי מילים
+// נשברת לשתי שורות ומעוותת את גובה הסרגל.
 const SCREENS = [
-  { key: 'prep',     label: 'רשימת הכנה', iconName: 'check' },
-  { key: 'plan',     label: 'תכנון',      iconName: 'plan' },
-  { key: 'expenses', label: 'הוצאות',     iconName: 'expenses' },
-  { key: 'summary',  label: 'סיכום',      iconName: 'summary' },
+  { key: 'prep',     label: 'הכנה',   iconName: 'check' },
+  { key: 'plan',     label: 'תכנון',  iconName: 'plan' },
+  { key: 'expenses', label: 'הוצאות', iconName: 'expenses' },
+  { key: 'summary',  label: 'סיכום',  iconName: 'summary' },
+  { key: 'settings', label: 'הגדרות', iconName: 'settings' },
 ];
 
 const mounts = new Map();
@@ -35,18 +38,14 @@ export function navigate(key) {
 async function buildTopbar() {
   const all = await listTrips();
 
-  const settingsBtn = el('button', {
-    class: 'icon-btn',
-    'aria-label': 'הגדרות',
-    html: icon('settings'),
-    onClick: () => navigate('settings'),
-  });
+  // סמל זהות, לא פקד: ההגדרות עברו לטאב התחתון ואין לו לאן לנווט.
+  const logo = el('img', { class: 'topbar-logo', src: './icons/icon-192.png', alt: '' });
 
   if (!all.length) {
     activeTrip = null;
     return el('div', { class: 'topbar-row' }, [
       el('div', { class: 'grow row-title', text: 'תכנון טיול ותקציב' }),
-      settingsBtn,
+      logo,
     ]);
   }
 
@@ -63,7 +62,7 @@ async function buildTopbar() {
   }, all.map(t => el('option', { value: t.id, selected: t.id === activeTrip, text: t.name })));
 
   return el('div', {}, [
-    el('div', { class: 'topbar-row' }, [select, settingsBtn]),
+    el('div', { class: 'topbar-row' }, [select, logo]),
     startDate
       ? el('div', { class: 'dim', style: 'margin-block-start:6px',
           text: fmtDateRange(startDate, endDate) })
@@ -126,6 +125,7 @@ export async function boot() {
   try { activeTrip = localStorage.getItem('activeTripId') || null; } catch { activeTrip = null; }
   const report = await migrate.run();
   await migrate.recolorCategories();
+  await migrate.dropLegacyGearTasks();
   if (!report.skipped && report.trips) toast('הנתונים הקיימים הותאמו למבנה החדש', 'success');
   document.addEventListener('data:changed', () => refresh());
   window.addEventListener('online',  () => { toast('חזרנו לרשת', 'success'); autoRefreshRates(); });

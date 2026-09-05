@@ -220,7 +220,9 @@ export function openCatalogSheet(tripId, stage) {
   const view = { phase: null, section: null, query: '' };
   let used = new Set();
 
-  const body = el('div');
+  // רק החלק הזה נבנה מחדש. שדה החיפוש וכפתורי ההוספה חיים כל זמן החלון,
+  // ולכן לחיצה על פריט לא מאפסת את הגלילה ולא גונבת את הפוקוס מהחיפוש.
+  const results = el('div');
 
   const addSelected = async () => {
     const items = [...selected.values()];
@@ -231,12 +233,36 @@ export function openCatalogSheet(tripId, stage) {
     refresh();
   };
 
-  // הקטלוג ארוך, ולכן כפתור ההוספה יושב גם בראש הרשימה וגם בתחתיתה
-  const addButton = () => el('button', {
-    class: 'btn btn-primary btn-block',
-    text: selected.size ? `הוסף ${selected.size} לרשימה` : 'הוסף נבחרים',
-    onClick: addSelected,
+  // הקטלוג ארוך, ולכן כפתור ההוספה יושב גם בראש הרשימה וגם בתחתיתה.
+  // שניהם קיימים תמיד — כפתור שמופיע רק אחרי הבחירה הראשונה דוחף את כל
+  // הרשימה למטה, וזו קפיצה בדיוק כמו זו שהתיקון הזה בא למנוע.
+  const addButtons = [];
+  function addButton() {
+    const button = el('button', {
+      class: 'btn btn-primary btn-block', text: 'הוסף נבחרים',
+      disabled: true, onClick: addSelected,
+    });
+    addButtons.push(button);
+    return button;
+  }
+
+  function syncAddButtons() {
+    for (const button of addButtons) {
+      button.textContent = selected.size ? `הוסף ${selected.size} לרשימה` : 'הוסף נבחרים';
+      button.disabled = !selected.size;
+    }
+  }
+
+  const search = el('input', {
+    class: 'field', type: 'search', placeholder: 'חיפוש בקטלוג',
+    onInput: e => { view.query = e.target.value; render(); },
   });
+
+  const body = el('div', {}, [
+    addButton(),
+    el('div', { class: 'field-row' }, [search]),
+    results,
+  ]);
 
   const s = sheet({
     title: 'הוספה מהקטלוג',
@@ -251,18 +277,22 @@ export function openCatalogSheet(tripId, stage) {
   const available = rows => rows.filter(r => !used.has(r.id));
 
   function catalogRow(item) {
-    const isSel = selected.has(item.id);
-    return el('button', {
+    const mark = el('span', { html: icon(selected.has(item.id) ? 'check' : 'plus') });
+    const node = el('button', {
       class: 'chip wrap', style: 'width:100%; justify-content:space-between; margin-block-start:6px; text-align:start',
-      'aria-pressed': String(isSel),
+      'aria-pressed': String(selected.has(item.id)),
       onClick: () => {
         if (selected.has(item.id)) selected.delete(item.id); else selected.set(item.id, item);
-        render();
+        const on = selected.has(item.id);
+        node.setAttribute('aria-pressed', String(on));
+        mark.innerHTML = icon(on ? 'check' : 'plus');
+        syncAddButtons();
       },
     }, [
       el('span', { style: 'flex:1', text: item.text }),
-      el('span', { html: icon(isSel ? 'check' : 'plus') }),
+      mark,
     ]);
+    return node;
   }
 
   function backRow(onClick, label) {
@@ -276,20 +306,12 @@ export function openCatalogSheet(tripId, stage) {
   }
 
   async function render() {
-    used = await prep.usedCatalogIds(tripId);
-    body.replaceChildren();
-    if (selected.size) body.append(addButton());
-    body.append(el('div', { class: 'field-row' }, [
-      el('input', {
-        class: 'field', type: 'search', placeholder: 'חיפוש בקטלוג', value: view.query,
-        onInput: async e => { view.query = e.target.value; await render(); },
-      }),
-    ]));
+    results.replaceChildren();
 
     if (view.query.trim()) {
-      const results = available(await catalog.search(view.query));
-      body.append(el('div', { class: 'sub', text: `${results.length} תוצאות` }));
-      body.append(...results.slice(0, 120).map(catalogRow));
+      const rows = available(await catalog.search(view.query));
+      results.append(el('div', { class: 'sub', text: `${rows.length} תוצאות` }));
+      results.append(...rows.slice(0, 120).map(catalogRow));
       return;
     }
 
@@ -300,36 +322,40 @@ export function openCatalogSheet(tripId, stage) {
       : allPhases;
 
     if (!view.phase) {
-      body.append(...phases.map(p => el('button', {
+      results.append(...phases.map(p => el('button', {
         class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px', text: p,
-        onClick: async () => { view.phase = p; await render(); },
+        onClick: () => { view.phase = p; render(); },
       })));
       return;
     }
 
     if (!view.section) {
-      body.append(backRow(() => { view.phase = null; render(); }, view.phase));
+      results.append(backRow(() => { view.phase = null; render(); }, view.phase));
       const sections = await catalog.sections(view.phase);
-      body.append(...sections.map(sec => el('button', {
+      results.append(...sections.map(sec => el('button', {
         class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px', text: sec,
-        onClick: async () => { view.section = sec; await render(); },
+        onClick: () => { view.section = sec; render(); },
       })));
       return;
     }
 
-    body.append(backRow(() => { view.section = null; render(); }, view.section));
+    results.append(backRow(() => { view.section = null; render(); }, view.section));
     let shown = 0;
     for (const topic of await catalog.topics(view.phase, view.section)) {
       const rows = available(await catalog.byTopic(view.phase, view.section, topic));
       if (!rows.length) continue;
       shown += rows.length;
-      body.append(el('div', { class: 'card-title', style: 'margin-block-start:12px', text: topic }));
-      body.append(...rows.map(catalogRow));
+      results.append(el('div', { class: 'card-title', style: 'margin-block-start:12px', text: topic }));
+      results.append(...rows.map(catalogRow));
     }
-    if (!shown) body.append(emptyNote('כל הפריטים במדור הזה כבר ברשימה.'));
+    if (!shown) results.append(emptyNote('כל הפריטים במדור הזה כבר ברשימה.'));
   }
 
-  render();
+  // נשלף פעם אחת: הוא משתנה רק דרך addFromCatalog, שסוגרת את החלון מיד אחריה.
+  (async () => {
+    used = await prep.usedCatalogIds(tripId);
+    await render();
+  })();
 }
 
 // ---------- המסך ----------

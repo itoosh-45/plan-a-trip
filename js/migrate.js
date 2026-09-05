@@ -1,5 +1,6 @@
 import * as db from './db.js';
 import * as trips from './trips.js';
+import * as catalog from './catalog.js';
 import { STAGE_BY_PHASE, URGENCY_BY_PRIORITY } from './prep.js';
 
 export const SCHEMA_VERSION = 2;
@@ -34,6 +35,24 @@ export async function recolorCategories() {
   if (stale.length) await db.bulkPut(db.STORES.categories, stale);
   await db.setSetting('categoryPalette', 1);
   return { recolored: stale.length };
+}
+
+/**
+ * ציוד לטרקים וציוד סקי עברו בקטלוג משלב "לפני" לשלב "ציוד מיוחד", שהוא
+ * מעכשיו רשימה קבועה בפני עצמה. משימות שנוספו מהם לפני השינוי יושבות
+ * ברשימת "לפני הטיול" ואין להן מקום שם. בהחלטת בעל המוצר הן נמחקות, ולא
+ * מועברות: מי שרוצה אותן יוסיף אותן מחדש מהרשימה הנכונה.
+ */
+export async function dropLegacyGearTasks() {
+  if (await db.getSetting('gearStageMigration', 0) >= 1) return { skipped: true };
+
+  const byId = await catalog.byId();
+  const stale = (await db.all(db.STORES.prepTasks))
+    .filter(t => byId.get(t.catalogId)?.phase === 'ציוד מיוחד');
+
+  for (const task of stale) await db.remove(db.STORES.prepTasks, task.id);
+  await db.setSetting('gearStageMigration', 1);
+  return { removed: stale.length };
 }
 
 const segmentFor = (segs, date, generalId) =>
