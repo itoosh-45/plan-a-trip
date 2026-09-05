@@ -27,12 +27,44 @@ function dateRange(from, to, { min, max } = {}) {
 
 // ---------- יעד ----------
 
-function openSegmentSheet(trip, existing) {
+/**
+ * מוודא שטווח הטיול מכיל את תאריכי היעד. אם לא — שואל אם להאריך את הטיול,
+ * ומאריך אותו. מחזיר את הטיול שאיתו אפשר להמשיך, או null אם המשתמש ביטל.
+ * מיוצא כי אשף יצירת הטיול מוסיף יעדים באותה הדרך בדיוק.
+ */
+export async function ensureTripCovers(trip, startDate, endDate) {
+  const over = it.rangeOverflow(trip, startDate, endDate);
+  if (!over) return trip;
+
+  const wants = [
+    over.startDate ? `להקדים את תחילתו ל-${fmtDate(over.startDate)}` : null,
+    over.endDate ? `להאריך אותו עד ${fmtDate(over.endDate)}` : null,
+  ].filter(Boolean).join(' ו');
+
+  const ok = await confirmDanger({
+    title: 'תאריכים מחוץ לטווח הטיול',
+    body: `הטיול מוגדר ${fmtDateRange(trip.startDate, trip.endDate)}. ${wants}?`,
+    confirmLabel: 'עדכן את הטיול',
+    confirmClass: 'btn-primary',
+  });
+  if (!ok) return null;
+
+  return trips.updateTrip({
+    ...trip,
+    startDate: over.startDate || trip.startDate,
+    endDate: over.endDate || trip.endDate,
+  });
+}
+
+function openSegmentSheet(trip, existing, prefill = { startDate: '', endDate: '' }) {
   const city = el('input', { class: 'field', type: 'text', value: existing?.city || '' });
   const country = el('input', { class: 'field', type: 'text', value: existing?.country || '' });
-  const range = dateRange(existing?.startDate, existing?.endDate, {
-    min: trip.startDate || undefined, max: trip.endDate || undefined,
-  });
+  // בלי min/max: חריגה מטווח הטיול היא מקרה לגיטימי שנפתר בחלון ההארכה,
+  // ולא משהו שהדפדפן צריך לחסום לפני שהמשתמש בכלל הספיק לבקש.
+  const range = dateRange(
+    existing?.startDate ?? prefill.startDate,
+    existing?.endDate ?? prefill.endDate,
+  );
   const allocation = el('input', {
     class: 'field', type: 'number', inputmode: 'decimal', step: '1', value: existing?.allocation || '',
   });
@@ -46,12 +78,14 @@ function openSegmentSheet(trip, existing) {
       range.node,
       row(`הקצאת תקציב (${cur.symbol(trip.currency)})`, allocation),
       el('p', { class: 'sub',
-        text: 'התאריכים חייבים ליפול בתוך טווח הטיול, ואסור שיחפפו ליעד אחר.' }),
+        text: 'תאריכים שחורגים מטווח הטיול יציעו להאריך אותו. חפיפה ליעד אחר אינה אפשרית.' }),
     ]),
     actions: [
       el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
         try {
+          const covering = await ensureTripCovers(trip, range.start.value, range.end.value);
+          if (!covering) return;
           await it.saveSegment(trip.id, {
             ...existing,
             city: city.value, country: country.value,
@@ -330,6 +364,6 @@ export async function mount(host, tripId) {
   host.append(el('button', {
     class: 'btn btn-primary btn-block card-gap',
     html: `${icon('plus')}<span>יעד חדש</span>`,
-    onClick: () => openSegmentSheet(trip, null),
+    onClick: () => openSegmentSheet(trip, null, it.defaultRange(trip, segs)),
   }));
 }

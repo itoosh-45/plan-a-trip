@@ -44,6 +44,38 @@ export async function defaultSegmentId(tripId, today = new Date().toISOString().
   return (hit || segs.find(s => s.kind === 'general'))?.id || null;
 }
 
+/**
+ * התאריכים שיעד חדש נפתח איתם: מהיום שאחרי סוף היעד האחרון ועד סוף הטיול.
+ * זה כמעט תמיד מה שרוצים, וזה גם הטווח היחיד שבטוח אינו חופף ליעד קיים.
+ * טיול בלי תאריכים מחזיר שדות ריקים — אין ממה לגזור.
+ */
+export function defaultRange(trip, segs) {
+  if (!trip?.startDate) return { startDate: '', endDate: '' };
+  const ends = segs.filter(s => s.kind !== 'general' && s.startDate)
+    .map(s => s.endDate || s.startDate).sort();
+  const last = ends.at(-1);
+  const start = last ? nextDay(last) : trip.startDate;
+  const endDate = trip.endDate || '';
+  // היעד האחרון כבר נגמר בסוף הטיול — אין יום פנוי להציע
+  if (endDate && start > endDate) return { startDate: '', endDate: '' };
+  return { startDate: start, endDate };
+}
+
+const nextDay = iso =>
+  new Date(Date.parse(`${iso}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+
+/**
+ * הטווח שהטיול צריך לגדול אליו כדי להכיל את היעד, או null אם הוא כבר מכיל
+ * אותו. טיול בלי תאריכים אינו מגביל דבר ולכן לעולם אינו זקוק להארכה.
+ */
+export function rangeOverflow(trip, startDate, endDate) {
+  if (!trip?.startDate || !trip?.endDate) return null;
+  const end = endDate || startDate;
+  const before = startDate && startDate < trip.startDate ? startDate : null;
+  const after = end > trip.endDate ? end : null;
+  return before || after ? { startDate: before, endDate: after } : null;
+}
+
 export async function saveSegment(tripId, seg) {
   const city = (seg.city || '').trim();
   if (!city) throw new Error('ליעד חייב להיות שם');

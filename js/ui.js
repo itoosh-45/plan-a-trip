@@ -57,7 +57,11 @@ export function toast(msg, kind = '') {
   setTimeout(() => node.remove(), 3500);
 }
 
-export function confirmDanger({ title, body, confirmLabel = 'מחק' }) {
+/**
+ * אישור לפעולה בעלת השלכות. confirmClass מאפשר לפעולה שאינה הרסנית — כמו
+ * הארכת טיול — לקבל כפתור ראשי במקום כפתור אדום, בלי טופס אישור שני.
+ */
+export function confirmDanger({ title, body, confirmLabel = 'מחק', confirmClass = 'btn-danger' }) {
   return new Promise(resolve => {
     let settled = false;
     const finish = v => { if (!settled) { settled = true; s.close(); resolve(v); } };
@@ -66,7 +70,7 @@ export function confirmDanger({ title, body, confirmLabel = 'מחק' }) {
       body: el('p', { class: 'dim', text: body }),
       actions: [
         el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => finish(false) }),
-        el('button', { class: 'btn btn-danger btn-block', text: confirmLabel, onClick: () => finish(true) }),
+        el('button', { class: `btn ${confirmClass} btn-block`, text: confirmLabel, onClick: () => finish(true) }),
       ],
     });
   });

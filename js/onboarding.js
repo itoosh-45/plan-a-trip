@@ -4,6 +4,7 @@ import * as cur from './currencies.js';
 import { el, sheet, toast, icon, fmtMoney, fmtDateRange } from './ui.js';
 import { refresh, setActiveTrip } from './app.js';
 import { openCatalogSheet } from './screens/prep.js';
+import { ensureTripCovers } from './screens/plan.js';
 
 const STEPS = ['פרטי הטיול', 'יעדים', 'תקציב', 'רשימת הכנה'];
 
@@ -107,7 +108,8 @@ export function openTripWizard(existing) {
   async function stepSegments() {
     const segs = (await it.listSegments(trip.id)).filter(x => x.kind !== 'general');
     const city = el('input', { class: 'field', type: 'text', placeholder: 'לדוגמה: בנגקוק' });
-    const range = dateRange(null, null, { min: trip.startDate || undefined, max: trip.endDate || undefined });
+    const prefill = it.defaultRange(trip, segs);
+    const range = dateRange(prefill.startDate, prefill.endDate);
 
     body.append(
       segs.length
@@ -132,6 +134,9 @@ export function openTripWizard(existing) {
           html: `${icon('plus')}<span>הוסף יעד</span>`,
           onClick: async () => {
             try {
+              const covering = await ensureTripCovers(trip, range.start.value, range.end.value);
+              if (!covering) return;
+              trip = covering;
               await it.saveSegment(trip.id, {
                 city: city.value, startDate: range.start.value, endDate: range.end.value,
                 currency: trip.currency,

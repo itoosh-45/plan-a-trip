@@ -108,5 +108,47 @@ export default async function () {
     assertEqual((await it.listItems(b.id)).map(i => i.title), ['טיסה ב']);
   });
 
+  // ---- קדימות תאריכים לייעד חדש וחריגה מטווח הטיול ----
+
+  s.test('defaultRange מתחיל ביום שאחרי היעד האחרון ונגמר בסוף הטיול', async () => {
+    const t = await freshTrip();
+    assertEqual(it.defaultRange(t, []), { startDate: '2026-09-25', endDate: '2026-10-25' });
+    await it.saveSegment(t.id, { city: 'טוקיו', startDate: '2026-09-25', endDate: '2026-09-30' });
+    const segs = await it.listSegments(t.id);
+    assertEqual(it.defaultRange(t, segs), { startDate: '2026-10-01', endDate: '2026-10-25' });
+  });
+
+  s.test('defaultRange מחזיר ריק כשאין לטיול תאריכים או כשאין יום פנוי', async () => {
+    await db.wipe();
+    const bare = await trips.createTrip({ name: 'בלי תאריכים' });
+    assertEqual(it.defaultRange(bare, []), { startDate: '', endDate: '' });
+    const t = await trips.createTrip({ name: 'מלא', startDate: '2026-09-25', endDate: '2026-09-27' });
+    const full = [{ kind: 'place', startDate: '2026-09-25', endDate: '2026-09-27' }];
+    assertEqual(it.defaultRange(t, full), { startDate: '', endDate: '' });
+  });
+
+  s.test('defaultRange מדלג על מקטע "כללי" שאין לו תאריכים', async () => {
+    const t = await freshTrip();
+    await it.saveSegment(t.id, { city: 'טוקיו', startDate: '2026-10-02', endDate: '2026-10-04' });
+    assertEqual(it.defaultRange(t, await it.listSegments(t.id)).startDate, '2026-10-05');
+  });
+
+  s.test('rangeOverflow מזהה חריגה בכל אחד משני הקצוות', async () => {
+    const trip = { startDate: '2026-09-25', endDate: '2026-10-25' };
+    assertEqual(it.rangeOverflow(trip, '2026-10-01', '2026-10-05'), null);
+    assertEqual(it.rangeOverflow(trip, '2026-10-20', '2026-11-02'), { startDate: null, endDate: '2026-11-02' });
+    assertEqual(it.rangeOverflow(trip, '2026-09-20', '2026-09-28'), { startDate: '2026-09-20', endDate: null });
+    assertEqual(it.rangeOverflow(trip, '2026-09-20', '2026-11-02'), { startDate: '2026-09-20', endDate: '2026-11-02' });
+  });
+
+  s.test('rangeOverflow על יום בודד משתמש בתאריך ההתחלה כסוף', () => {
+    const trip = { startDate: '2026-09-25', endDate: '2026-10-25' };
+    assertEqual(it.rangeOverflow(trip, '2026-10-30', ''), { startDate: null, endDate: '2026-10-30' });
+  });
+
+  s.test('טיול בלי תאריכים לעולם אינו זקוק להארכה', () => {
+    assertEqual(it.rangeOverflow({ startDate: null, endDate: null }, '2026-10-01', '2026-10-05'), null);
+  });
+
   await s.done();
 }
