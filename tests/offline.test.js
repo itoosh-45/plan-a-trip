@@ -26,15 +26,27 @@ export default async function () {
     assertEqual(missing, [], 'קבצים שנרשמו למטמון אך אינם קיימים');
   });
 
-  s.test('כל מודול js שקיים על הדיסק נמצא ברשימת המטמון', async () => {
+  // רשימה קשיחה של מודולים לא תופסת מודול חדש שנשכח במטמון, ולכן הבדיקה
+  // הזו הולכת בעקבות ה-import-ים עצמם, מ-index.html והלאה.
+  s.test('כל מודול שהאפליקציה מייבאת בפועל נמצא ברשימת המטמון', async () => {
     const [sw, index] = await Promise.all([text('../sw.js'), text('../index.html')]);
-    // כל מודול שהאפליקציה מייבאת, ישירות או דרך מסך, חייב להיות במטמון
-    const modules = [
-      'app', 'db', 'ui', 'icons', 'trips', 'itinerary', 'expenses', 'money', 'rates',
-      'currencies', 'prep', 'catalog', 'excel', 'backup', 'migrate', 'onboarding',
-    ].map(m => `./js/${m}.js`);
-    const screens = ['prep', 'plan', 'expenses', 'summary', 'settings'].map(m => `./js/screens/${m}.js`);
-    const missing = [...modules, ...screens].filter(m => !sw.includes(`'${m}'`));
+    const root = new URL('../', location.href).href;
+    const specs = src => [...src.matchAll(/from\s+'([^']+\.js)'/g)].map(m => m[1]);
+
+    const seen = new Set();
+    const queue = specs(index).map(spec => new URL(spec, `${root}index.html`).href);
+    while (queue.length) {
+      const url = queue.pop();
+      if (seen.has(url) || !url.startsWith(root)) continue;
+      seen.add(url);
+      for (const spec of specs(await text(url))) queue.push(new URL(spec, url).href);
+    }
+
+    assertTrue(seen.size >= 20, `נמצאו רק ${seen.size} מודולים — המעקב אחרי ה-import-ים נשבר`);
+    const missing = [...seen]
+      .map(url => `./${url.slice(root.length)}`)
+      .filter(rel => !sw.includes(`'${rel}'`))
+      .sort();
     assertEqual(missing, [], 'מודולים שאינם נשמרים למטמון ולכן ישברו אופליין');
     assertTrue(index.includes("navigator.serviceWorker.register('./sw.js')"), 'ה-Service Worker אינו נרשם');
   });
