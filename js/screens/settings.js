@@ -6,6 +6,7 @@ import * as money from '../money.js';
 import * as excel from '../excel.js';
 import * as backup from '../backup.js';
 import * as catalog from '../catalog.js';
+import * as imported from '../imported.js';
 import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtDateRange } from '../ui.js';
 import { refresh, setActiveTrip, navigate } from '../app.js';
 import { openTripWizard } from '../onboarding.js';
@@ -359,6 +360,144 @@ function openCategorySheet(tripId, existing) {
   });
 }
 
+// ---------- קטלוגים מיובאים ----------
+
+/**
+ * חלון ההעלאה. הקובץ כבר נקרא ואומת לפני שהחלון נפתח, ולכן כאן נשארו רק
+ * ההחלטות: איך קוראים לרשימה, ולאן היא משויכת. שדות השיוך אופציונליים —
+ * בלעדיהם הרשימה זמינה מכל רשימת הכנה, וזו ברירת המחדל.
+ */
+async function openImportSheet(items, suggestedName) {
+  const name = el('input', { class: 'field', type: 'text', value: suggestedName });
+
+  const phases = await catalog.phases();
+  const phaseSel = el('select', { class: 'field' }, [
+    el('option', { value: '', text: 'ללא שיוך — זמינה בכל הרשימות' }),
+    ...phases.map(p => el('option', { value: p, text: p })),
+  ]);
+  const sectionSel = el('select', { class: 'field', disabled: true }, [
+    el('option', { value: '', text: 'ללא מדור' }),
+  ]);
+
+  phaseSel.addEventListener('change', async () => {
+    const options = [el('option', { value: '', text: 'ללא מדור' })];
+    if (phaseSel.value) {
+      for (const sec of await catalog.sections(phaseSel.value)) {
+        options.push(el('option', { value: sec, text: sec }));
+      }
+    }
+    sectionSel.replaceChildren(...options);
+    sectionSel.disabled = !phaseSel.value;
+  });
+
+  const row = (label, node) => el('div', { class: 'field-row' }, [
+    el('label', { class: 'field-label', text: label }), node,
+  ]);
+
+  const s = sheet({
+    title: 'רשימה מיובאת',
+    body: el('div', {}, [
+      el('p', { class: 'sub', style: 'margin:0 0 12px', text: `נקראו ${items.length} פריטים מהקובץ.` }),
+      row('שם הרשימה', name),
+      row('שלב', phaseSel),
+      row('מדור', sectionSel),
+      el('p', { class: 'sub',
+        text: 'הרשימה תופיע תמיד בסוף בורר הקטלוג, מסומנת כרשימה מיובאת. השיוך קובע רק לאיזו רשימת הכנה ולאיזו קטגוריה הפריטים ייכנסו.' }),
+    ]),
+    actions: [
+      el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
+      el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
+        try {
+          await imported.add({
+            name: name.value, items,
+            phase: phaseSel.value || null,
+            section: sectionSel.value || null,
+          });
+          toast(`נשמרו ${items.length} פריטים`, 'success');
+          s.close();
+          refresh();
+        } catch (err) { toast(err.message, 'error'); }
+      } }),
+    ],
+  });
+}
+
+function importCatalogFlow() {
+  pickFile('.xlsx,.csv', async file => {
+    let parsed;
+    try {
+      parsed = await imported.parse(file);
+    } catch (err) { toast(err.message, 'error'); return; }
+
+    if (!parsed.ok) {
+      const s = sheet({
+        title: 'הקובץ לא תקין',
+        body: el('div', {}, parsed.errors.map(e =>
+          el('div', { class: 'toast error', style: 'margin-block-start:8px', text: e }))),
+        actions: [el('button', { class: 'btn btn-tertiary btn-block', text: 'סגור', onClick: () => s.close() })],
+      });
+      return;
+    }
+    await openImportSheet(parsed.items, file.name.replace(/\.(xlsx|csv)$/i, ''));
+  });
+}
+
+function importedSection(lists) {
+  const rows = lists.map(entry => el('div', { class: 'row' }, [
+    el('span', { class: 'grow' }, [
+      el('div', { class: 'row-title', text: entry.name }),
+      el('div', { class: 'sub', text: [
+        `${entry.items.length} פריטים`,
+        entry.phase ? `שלב ${entry.phase}` : null,
+        entry.section ? `מדור ${entry.section}` : null,
+        entry.addedAt,
+      ].filter(Boolean).join(' · ') }),
+    ]),
+    el('button', {
+      class: 'icon-btn', style: 'color:var(--color-danger)',
+      'aria-label': `מחק את ${entry.name}`, html: icon('trash'),
+      onClick: async () => {
+        const ok = await confirmDanger({
+          title: `למחוק את "${entry.name}"?`,
+          body: 'הרשימה תיעלם מבורר הקטלוג. משימות שכבר נוספו לטיולים יישארו במקומן.',
+          confirmLabel: 'מחק רשימה',
+        });
+        if (!ok) return;
+        await imported.remove(entry.id);
+        toast('הרשימה נמחקה', 'success');
+        refresh();
+      },
+    }),
+  ]));
+
+  return section(
+    'קטלוגים מיובאים',
+    'רשימות פריטים משלך, מקובץ xlsx או csv: עמודה אחת עם הפריטים, ועמודה שנייה אופציונלית עם הדחיפות. הן נשמרות במכשיר הזה וזמינות בכל הטיולים.',
+    [
+      ...(rows.length ? rows : [el('p', { class: 'dim', style: 'margin:0', text: 'עוד לא העלית רשימות.' })]),
+      el('div', { style: 'display:flex; gap:8px; margin-block-start:12px' }, [
+        el('button', {
+          class: 'btn btn-secondary btn-block', html: `${icon('share')}<span>העלאת רשימה</span>`,
+          onClick: importCatalogFlow,
+        }),
+        el('button', {
+          class: 'btn btn-tertiary btn-block', html: `${icon('download')}<span>קובץ תבנית</span>`,
+          onClick: () => {
+            try {
+              const url = URL.createObjectURL(imported.templateBlob());
+              const a = el('a', { href: url, download: 'תבנית-רשימה.xlsx' });
+              document.body.append(a);
+              a.click();
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            } catch (err) { toast(err.message, 'error'); }
+          },
+        }),
+      ]),
+    ],
+  );
+}
+
 // ---------- אקסל וגיבוי ----------
 
 async function exportExcel(trip) {
@@ -602,6 +741,7 @@ export async function mount(host, tripId) {
     ));
   }
 
+  host.append(importedSection(await imported.list()));
   host.append(await hiddenCatalogSection());
 
   host.append(section(

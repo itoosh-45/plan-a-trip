@@ -105,6 +105,8 @@ body {
 .btn-quiet     { background: var(--color-surface-2); color: var(--color-text); }
 .btn-danger    { background: transparent; color: var(--color-danger); border-color: var(--color-danger); }
 .btn-block     { width: 100%; }
+/* כפתור מושבת מאבד את הבולטות שלו במקום להיעלם — הוא עדיין אומר מה יקרה. */
+.btn:disabled { opacity: 0.4; cursor: default; }
 
 .icon-btn {
   display: inline-flex;

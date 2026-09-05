@@ -265,7 +265,7 @@ async function renderSegment(host, trip, seg) {
         ])))
       : el('div', { class: 'dim', text: 'אין עדיין משימות שמשויכות ליעד הזה.' }),
     el('div', { class: 'sub', style: 'margin-block-start:8px',
-      text: 'שיוך משימה ליעד נעשה בעריכת המשימה בטאב "רשימת הכנה".' }),
+      text: 'שיוך משימה ליעד נעשה בעריכת המשימה בטאב "הכנה".' }),
   ], 'card-gap'));
 
   if (seg.kind !== 'general') {

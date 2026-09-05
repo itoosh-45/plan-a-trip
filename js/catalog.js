@@ -1,4 +1,5 @@
 import * as db from './db.js';
+import * as imported from './imported.js';
 
 const HIDDEN_KEY = 'catalogHidden';
 
@@ -15,11 +16,19 @@ export async function load() {
 
 let index = null;
 
-/** מפת id -> פריט, לחיפוש חוזר בלי לסרוק 519 שורות בכל קריאה. */
+/**
+ * מפת id -> פריט, לחיפוש חוזר בלי לסרוק את כל הקטלוג בכל קריאה. הקטלוג
+ * המובנה מוטמן; הרשימות המיובאות נקראות בכל פעם, כי הן משתנות תוך כדי
+ * ריצה והן שורה אחת במסד. המפה משמשת רק להעשרת משימות קיימות, ולכן
+ * הרשימות המיובאות חייבות להיות בה — אחרת משימה שהגיעה מהן מאבדת קטגוריה.
+ */
 export async function byId() {
-  if (index) return index;
-  index = new Map((await load()).map(item => [item.id, item]));
-  return index;
+  if (!index) index = new Map((await load()).map(item => [item.id, item]));
+  const extra = await imported.allItems();
+  if (!extra.length) return index;
+  const merged = new Map(index);
+  for (const item of extra) merged.set(item.id, item);
+  return merged;
 }
 
 const PHASE_ORDER = ['לפני', 'בדרך', 'בשהות', 'בחזרה', 'ציוד מיוחד'];

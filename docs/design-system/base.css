@@ -99,6 +99,9 @@ html, body {
   cursor: pointer;
 }
 .btn-block { width: 100%; }
+/* כפתור מושבת מאבד בולטות במקום להיעלם: הוא עדיין אומר מה יקרה כשיהיה
+   אפשר ללחוץ עליו, ולכן המקום שלו בפריסה נשמר. */
+.btn:disabled { opacity: 0.4; cursor: default; }
 
 /* הפעולה הראשית של המסך. אחת. */
 .btn-primary   { background: var(--color-highlight); color: #fff; }
@@ -231,7 +234,11 @@ html, body {
 .nav button[aria-current="page"] { color: var(--color-text); font-weight: 500; }
 
 /* ---- מרחפים ----
-   רק כאן הצל מופיע. */
+   רק כאן הצל מופיע.
+
+   שכבות: חלון = 40, כפתור צף = 30, הודעה = 60. ההודעה למעלה מכולם
+   בכוונה — כמעט כל הודעת שגיאה נולדת מטופס שיושב בתוך חלון, והודעה
+   שמצוירת מתחת לחלון היא הודעה שלא נאמרה. */
 .toast {
   padding: 12px 16px;
   border-radius: var(--radius-control);

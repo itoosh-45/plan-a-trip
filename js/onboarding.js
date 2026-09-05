@@ -1,6 +1,7 @@
 import * as trips from './trips.js';
 import * as it from './itinerary.js';
 import * as cur from './currencies.js';
+import * as prep from './prep.js';
 import { el, sheet, toast, icon, fmtMoney, fmtDateRange } from './ui.js';
 import { refresh, setActiveTrip } from './app.js';
 import { openCatalogSheet } from './screens/prep.js';
@@ -194,8 +195,10 @@ export function openTripWizard(existing) {
   // ---- שלב 4: מילוי ראשוני של רשימת ההכנה ----
   async function stepPrep() {
     body.append(el('p', { class: 'dim', style: 'margin:0 0 12px',
-      text: 'אפשר למלא את רשימת ההכנה מהקטלוג עכשיו, או לדלג ולעשות זאת בכל שלב מהטאב "רשימת הכנה".' }));
-    for (const [stage, label] of [['before', 'לפני הטיול'], ['during', 'במהלך השהייה'], ['after', 'בחזרה']]) {
+      text: 'אפשר למלא את רשימת ההכנה מהקטלוג עכשיו, או לדלג ולעשות זאת בכל שלב מהטאב "הכנה".' }));
+    // הרשימות הקבועות מגיעות מ-prep.STAGES, ולכן רשימה חדשה שנוספת שם
+    // מופיעה כאן מעצמה ולא נשכחת באשף
+    for (const [stage, label] of Object.entries(prep.STAGES)) {
       body.append(el('button', {
         class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px',
         html: `${icon('plus')}<span>${label} — בחר מהקטלוג</span>`,

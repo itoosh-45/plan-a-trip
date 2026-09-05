@@ -188,7 +188,11 @@ export async function removeTask(tripId, taskId) {
   await db.remove(db.STORES.prepTasks, taskId);
 }
 
-/** מוסיף פריטים מהקטלוג כמשימות עצמאיות. מדלג על catalogId שכבר קיים לטיול. */
+/**
+ * מוסיף פריטים מהקטלוג כמשימות עצמאיות. מדלג על catalogId שכבר קיים לטיול.
+ * פריט שנושא stage משלו קובע לעצמו — כך רשימה מיובאת ששויכה לשלב מסוים
+ * נוחתת שם, גם כשהבורר נפתח מרשימה אחרת.
+ */
 export async function addFromCatalog(tripId, catalogItems, stage) {
   const already = await usedCatalogIds(tripId);
   const toAdd = catalogItems.filter(c => !already.has(c.id));
@@ -197,7 +201,7 @@ export async function addFromCatalog(tripId, catalogItems, stage) {
   return db.bulkPut(db.STORES.prepTasks, toAdd.map(c => ({
     tripId,
     catalogId: c.id,
-    stage: stage || STAGE_BY_PHASE[c.phase] || 'before',
+    stage: c.stage || stage || STAGE_BY_PHASE[c.phase] || 'before',
     category: c.section || OTHER,
     urgency: URGENCY_BY_PRIORITY[c.priority] || 'normal',
     title: c.text,

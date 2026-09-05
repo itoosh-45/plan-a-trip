@@ -2,6 +2,7 @@ import * as trips from '../trips.js';
 import * as it from '../itinerary.js';
 import * as prep from '../prep.js';
 import * as catalog from '../catalog.js';
+import * as imported from '../imported.js';
 import { el, card, sheet, toast, confirmDanger, icon, fmtMoney } from '../ui.js';
 import { refresh } from '../app.js';
 
@@ -217,8 +218,9 @@ function taskRow(tripId, task, segs, currency) {
 
 export function openCatalogSheet(tripId, stage) {
   const selected = new Map();
-  const view = { phase: null, section: null, query: '' };
+  const view = { phase: null, section: null, list: null, query: '' };
   let used = new Set();
+  let lists = [];
 
   // רק החלק הזה נבנה מחדש. שדה החיפוש וכפתורי ההוספה חיים כל זמן החלון,
   // ולכן לחיצה על פריט לא מאפסת את הגלילה ולא גונבת את הפוקוס מהחיפוש.
@@ -227,7 +229,10 @@ export function openCatalogSheet(tripId, stage) {
   const addSelected = async () => {
     const items = [...selected.values()];
     if (!items.length) { s.close(); return; }
-    const added = await prep.addFromCatalog(tripId, items, stage);
+    const added = await prep.addFromCatalog(tripId, items.map(item => ({
+      ...item,
+      stage: item.phase ? prep.STAGE_BY_PHASE[item.phase] : undefined,
+    })), stage);
     toast(added.length === 1 ? 'נוספה משימה אחת' : `נוספו ${added.length} משימות`, 'success');
     s.close();
     refresh();
@@ -309,9 +314,23 @@ export function openCatalogSheet(tripId, stage) {
     results.replaceChildren();
 
     if (view.query.trim()) {
-      const rows = available(await catalog.search(view.query));
+      const needle = view.query.trim().toLowerCase();
+      const rows = available([
+        ...await catalog.search(view.query),
+        ...lists.flatMap(entry => imported.itemsOf(entry)
+          .filter(item => item.text.toLowerCase().includes(needle))),
+      ]);
       results.append(el('div', { class: 'sub', text: `${rows.length} תוצאות` }));
       results.append(...rows.slice(0, 120).map(catalogRow));
+      return;
+    }
+
+    // רשימה מיובאת נפתחת ישר לפריטים: אין לה מדור ואין לה נושא
+    if (view.list) {
+      results.append(backRow(() => { view.list = null; render(); }, view.list.name));
+      const rows = available(imported.itemsOf(view.list));
+      if (!rows.length) results.append(emptyNote('כל הפריטים ברשימה הזו כבר ברשימת ההכנה.'));
+      results.append(...rows.map(catalogRow));
       return;
     }
 
@@ -326,6 +345,16 @@ export function openCatalogSheet(tripId, stage) {
         class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px', text: p,
         onClick: () => { view.phase = p; render(); },
       })));
+      // הרשימות שהמשתמש הביא בעצמו, תמיד אחרונות ותמיד מסומנות ככאלה —
+      // גם כשהוא שייך אותן לשלב, כדי שתמיד יהיה ברור מה מקורי ומה שלו.
+      results.append(...lists.map(entry => el('button', {
+        class: 'btn btn-tertiary btn-block',
+        style: 'margin-block-start:8px; display:block; text-align:start',
+        onClick: () => { view.list = entry; render(); },
+      }, [
+        el('div', { class: 'sub', text: 'רשימה מיובאת' }),
+        el('div', { style: 'font-weight:600', text: entry.name }),
+      ])));
       return;
     }
 
@@ -353,7 +382,7 @@ export function openCatalogSheet(tripId, stage) {
 
   // נשלף פעם אחת: הוא משתנה רק דרך addFromCatalog, שסוגרת את החלון מיד אחריה.
   (async () => {
-    used = await prep.usedCatalogIds(tripId);
+    [used, lists] = await Promise.all([prep.usedCatalogIds(tripId), imported.list()]);
     await render();
   })();
 }
