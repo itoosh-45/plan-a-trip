@@ -47,7 +47,7 @@ export function openTripWizard(existing) {
     else await stepPrep();
   }
 
-  function nav({ nextLabel = 'המשך', onNext, skip = true }) {
+  function nav({ nextLabel = 'המשך ←', onNext, skip = true }) {
     if (step > 0) {
       actions.append(el('button', {
         class: 'btn btn-tertiary', text: 'הקודם', onClick: () => { step--; render(); },

@@ -1,5 +1,5 @@
 import { ICONS } from './icons.js';
-import { symbol as currencySymbol } from './currencies.js';
+import { symbol as currencySymbol, displayFor } from './currencies.js';
 
 export function icon(name, cls = '') {
   const body = ICONS[name] || ICONS.other;
@@ -78,16 +78,34 @@ export function confirmDanger({ title, body, confirmLabel = 'מחק', confirmCla
 
 const MONEY = new Map();
 /** אגורות מוצגות רק בסכומים קטנים. בסכום גדול הן רעש. */
-export function fmtMoney(amount, currency = 'ILS') {
-  if (amount === null || amount === undefined || Number.isNaN(amount)) return '—';
+function moneyFormat(amount, currency) {
   const digits = Math.abs(amount) >= 100 ? 0 : 2;
   const key = `${currency}|${digits}`;
   if (!MONEY.has(key)) {
     MONEY.set(key, new Intl.NumberFormat('he-IL', {
-      style: 'currency', currency, maximumFractionDigits: digits, minimumFractionDigits: 0,
+      style: 'currency', currency, currencyDisplay: displayFor(currency),
+      maximumFractionDigits: digits, minimumFractionDigits: 0,
     }));
   }
-  return MONEY.get(key).format(amount);
+  return MONEY.get(key);
+}
+
+const isAmount = a => a !== null && a !== undefined && !Number.isNaN(a);
+
+export function fmtMoney(amount, currency = 'ILS') {
+  if (!isAmount(amount)) return '—';
+  return moneyFormat(amount, currency).format(amount);
+}
+
+/**
+ * אותו סכום בדיוק, כ-HTML, עם תו המטבע עטוף ב-.cur כדי שיוצג קטן מהספרות.
+ * Intl מחזיר כאן רק ספרות, מפרידים וסימן מטבע, ולכן אין מה לברוח ממנו.
+ */
+export function fmtMoneyHtml(amount, currency = 'ILS') {
+  if (!isAmount(amount)) return '—';
+  return moneyFormat(amount, currency).formatToParts(amount)
+    .map(p => (p.type === 'currency' ? `<span class="cur">${p.value}</span>` : p.value))
+    .join('');
 }
 
 export function fmtDate(iso) {

@@ -4,9 +4,10 @@ import * as expenses from '../expenses.js';
 import * as money from '../money.js';
 import * as cur from '../currencies.js';
 import {
-  el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote, fmtMoney, fmtDate,
+  el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote, fmtMoney, fmtMoneyHtml, fmtDate,
 } from '../ui.js';
 import { refresh } from '../app.js';
+import { noTripCard } from './no-trip.js';
 
 let segmentFilter = '';
 let walletOpen = false;
@@ -124,7 +125,7 @@ function walletCard(trip, balances, cashRows, cats, segs) {
       el('span', { class: 'grow', text: code }),
       el('span', {
         class: 'num money', style: balances[code] < 0 ? 'color:var(--color-danger)' : null,
-        text: fmtMoney(balances[code], code),
+        html: fmtMoneyHtml(balances[code], code),
       }),
     ]));
   }
@@ -156,7 +157,7 @@ function walletCard(trip, balances, cashRows, cats, segs) {
           el('span', { class: 'sub',
             text: `${c.name} · ${segs.find(sg => sg.id === r.segmentId)?.city || 'כללי'} · ${fmtDate(r.date)}` }),
         ]),
-        el('span', { class: 'num', text: `−${fmtMoney(r.amount, r.currency)}` }),
+        el('span', { class: 'num', html: `−${fmtMoneyHtml(r.amount, r.currency)}` }),
       ]));
     }
   }
@@ -168,10 +169,7 @@ function walletCard(trip, balances, cashRows, cats, segs) {
 
 export async function mount(host, tripId) {
   if (!tripId) {
-    host.append(card([
-      el('div', { class: 'empty-title', text: 'אין עדיין טיול' }),
-      el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי לעקוב אחרי הוצאות.' }),
-    ], 'card-gap'));
+    host.append(noTripCard('שחזרו גיבוי קיים או פתחו טיול חדש כדי לעקוב אחרי הוצאות.'));
     return;
   }
 
@@ -189,7 +187,7 @@ export async function mount(host, tripId) {
   host.append(card([
     el('div', { style: 'display:flex; align-items:baseline; justify-content:space-between' }, [
       el('span', { class: 'dim', text: `סה"כ הוצאות (${rows.filter(r => r.kind !== 'cashSpend').length})` }),
-      el('span', { class: 'num money-lg', text: fmtMoney(totals.total, trip.currency) }),
+      el('span', { class: 'num money-lg', html: fmtMoneyHtml(totals.total, trip.currency) }),
     ]),
   ], 'card-gap'));
 
@@ -216,7 +214,7 @@ export async function mount(host, tripId) {
     host.append(card([
       el('div', { style: 'display:flex; align-items:center; gap:8px; margin-block-end:4px' }, [
         el('span', { class: 'grow row-title', text: seg.city }),
-        el('span', { class: 'num money', text: fmtMoney(stat.amount, trip.currency) }),
+        el('span', { class: 'num money', html: fmtMoneyHtml(stat.amount, trip.currency) }),
       ]),
       stat.allocation
         ? el('div', { class: 'sub' }, [
@@ -242,7 +240,7 @@ export async function mount(host, tripId) {
               text: `${r.kind === 'withdraw' ? KIND_LABEL.withdraw : c.name} · ${fmtDate(r.date)}` }),
           ]),
           el('span', { style: 'text-align:end' }, [
-            el('div', { class: 'num money', text: fmtMoney(r.amount, r.currency) }),
+            el('div', { class: 'num money', html: fmtMoneyHtml(r.amount, r.currency) }),
             ilsNote(r.amount, r.currency, r.rateToILS),
           ]),
         ]);

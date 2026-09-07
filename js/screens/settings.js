@@ -7,7 +7,7 @@ import * as excel from '../excel.js';
 import * as backup from '../backup.js';
 import * as catalog from '../catalog.js';
 import * as imported from '../imported.js';
-import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtDateRange } from '../ui.js';
+import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtMoneyHtml, fmtDateRange } from '../ui.js';
 import { refresh, setActiveTrip, navigate } from '../app.js';
 import { openTripWizard } from '../onboarding.js';
 
@@ -47,7 +47,7 @@ function tripCard(trip, totals, isActive) {
       onClick: () => { setActiveTrip(trip.id); navigate('summary'); },
     }, [
       el('span', { class: 'dim', text: `סה"כ הוצאות (${totals.count})` }),
-      el('span', { class: 'total num', text: fmtMoney(totals.amount, trip.currency) }),
+      el('span', { class: 'total num', html: fmtMoneyHtml(totals.amount, trip.currency) }),
     ]),
     el('div', { style: 'display:flex; gap:8px; padding:0 14px 10px' }, [
       el('button', {
@@ -614,7 +614,7 @@ async function runBackup(tripId) {
   } catch (err) { toast(err.message, 'error'); }
 }
 
-function runRestore() {
+export function runRestore() {
   pickFile('.json,application/json', async file => {
     const parsed = await backup.parseBackup(file);
     if (!parsed.ok) { toast(parsed.error, 'error'); return; }
@@ -684,7 +684,7 @@ export async function mount(host, tripId) {
     text: 'לחיצה על כרטיס פותחת את הסיכום שלו. הטיול הפעיל הוא זה שכל שאר המסכים מציגים.' }));
   for (const t of all) host.append(tripCard(t, totals.get(t.id), t.id === tripId));
   host.append(el('button', {
-    class: 'btn btn-primary btn-block card-gap',
+    class: 'btn btn-primary btn-hero card-gap',
     html: `${icon('plus')}<span>טיול חדש</span>`,
     onClick: () => openTripWizard(null),
   }));

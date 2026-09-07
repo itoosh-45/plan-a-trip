@@ -1,6 +1,7 @@
 import { suite, assertEqual, assertTrue } from './harness.js';
 import { ICONS } from '../js/icons.js';
-import { icon, el, fmtDate, fmtDateRange, nightsBetween, datesBetween } from '../js/ui.js';
+import { icon, el, fmtDate, fmtDateRange, fmtMoneyHtml, nightsBetween, datesBetween } from '../js/ui.js';
+import { symbol, NAMES } from '../js/currencies.js';
 
 export default async function () {
   const s = suite('מערכת העיצוב ועוזרי הממשק');
@@ -62,6 +63,24 @@ export default async function () {
     assertEqual(fmtDate(''), '');
     assertEqual(fmtDateRange('2026-09-03', '2026-09-03'), fmtDate('2026-09-03'));
     assertEqual(fmtDateRange('', ''), '');
+  });
+
+  s.test('מטבע עם סימן ייחודי מוצג כסימן ולא כקוד', () => {
+    const asCode = Object.keys(NAMES).filter(c => symbol(c) === c);
+    // CHF, AED, MAD ו-JOD באמת חסרי סימן — כל השאר חייב סימן.
+    assertEqual(asCode.sort(), ['AED', 'CHF', 'JOD', 'MAD']);
+    assertEqual(symbol('GEL'), '₾');
+    assertEqual(symbol('ILS'), '₪');
+    // הבחנה בין דולרים לא נמחקת בדרך
+    assertEqual(symbol('AUD'), 'A$');
+  });
+
+  s.test('fmtMoneyHtml עוטף רק את תו המטבע ב-.cur', () => {
+    const node = el('span', { html: fmtMoneyHtml(1234, 'GEL') });
+    assertEqual(node.querySelectorAll('.cur').length, 1);
+    assertEqual(node.querySelector('.cur').textContent, '₾');
+    assertTrue(node.textContent.includes('1,234'), `סכום שגוי: ${node.textContent}`);
+    assertEqual(el('span', { html: fmtMoneyHtml(null) }).textContent, '—');
   });
 
   s.test('tokens.css הוא המקור לצבעים — הערכים נטענו', () => {

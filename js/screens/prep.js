@@ -5,6 +5,7 @@ import * as catalog from '../catalog.js';
 import * as imported from '../imported.js';
 import { el, card, sheet, toast, confirmDanger, icon, fmtMoney } from '../ui.js';
 import { refresh } from '../app.js';
+import { noTripCard } from './no-trip.js';
 
 const ZONES = ['critical', 'important', 'normal'];
 
@@ -199,7 +200,7 @@ function taskRow(tripId, task, segs, currency) {
         el('span', { class: 'urgency-tag', text: prep.URGENCY[task.urgency || 'normal'] }),
         seg ? el('span', { text: ` · ${seg.city}` }) : null,
         task.plannedAmount
-          ? el('span', { class: 'num', text: ` · ${fmtMoney(task.plannedAmount, currency)}` })
+          ? el('span', { class: 'num', html: ` · ${fmtMoneyHtml(task.plannedAmount, currency)}` })
           : null,
       ]),
     ]),
@@ -462,10 +463,7 @@ function openNewListSheet(tripId) {
 
 export async function mount(host, tripId) {
   if (!tripId) {
-    host.append(card([
-      el('div', { class: 'empty-title', text: 'אין עדיין טיול' }),
-      el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי להתחיל.' }),
-    ], 'card-gap'));
+    host.append(noTripCard('שחזרו גיבוי קיים או פתחו טיול חדש כדי להתחיל.'));
     return;
   }
 

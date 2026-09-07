@@ -1,6 +1,7 @@
 import * as trips from '../trips.js';
 import * as money from '../money.js';
-import { el, card, icon, fmtMoney, fmtDateRange } from '../ui.js';
+import { el, card, icon, fmtMoney, fmtMoneyHtml, fmtDateRange } from '../ui.js';
+import { noTripCard } from './no-trip.js';
 
 let chartInstance = null;
 
@@ -27,16 +28,13 @@ function statTile(label, value, tone = '') {
             background:${tone || 'var(--color-surface-2)'}`,
   }, [
     el('div', { class: 'sub', style: 'margin:0', text: label }),
-    el('div', { class: 'num stat-value', text: value }),
+    el('div', { class: 'num stat-value', html: value }),
   ]);
 }
 
 export async function mount(host, tripId) {
   if (!tripId) {
-    host.append(card([
-      el('div', { class: 'empty-title', text: 'אין עדיין טיול' }),
-      el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי לראות סיכום.' }),
-    ], 'card-gap'));
+    host.append(noTripCard('שחזרו גיבוי קיים או פתחו טיול חדש כדי לראות סיכום.'));
     return;
   }
 
@@ -51,18 +49,18 @@ export async function mount(host, tripId) {
       ? el('div', { class: 'sub', text: fmtDateRange(trip.startDate, trip.endDate) })
       : null,
     el('div', { style: 'display:flex; gap:8px; margin-block-start:12px' }, [
-      statTile('סך הוצאות', fmtMoney(sum.total, c)),
+      statTile('סך הוצאות', fmtMoneyHtml(sum.total, c)),
       statTile(
         sum.overCeiling ? 'חריגה מהתקרה' : 'נותר מהתקרה',
-        fmtMoney(Math.abs(sum.remaining), c),
+        fmtMoneyHtml(Math.abs(sum.remaining), c),
         sum.overCeiling
           ? 'color-mix(in srgb, var(--color-danger) 12%, transparent)'
           : 'color-mix(in srgb, var(--color-success) 12%, transparent)',
       ),
     ]),
     el('div', { style: 'display:flex; gap:8px; margin-block-start:8px' }, [
-      statTile('מתוכנן במסלול', fmtMoney(planned, c)),
-      statTile('מזומן בארנק', fmtMoney(sum.cashInWallet, c)),
+      statTile('מתוכנן במסלול', fmtMoneyHtml(planned, c)),
+      statTile('מזומן בארנק', fmtMoneyHtml(sum.cashInWallet, c)),
     ]),
   ], 'card-gap'));
 
@@ -78,7 +76,7 @@ export async function mount(host, tripId) {
           el('span', { class: 'sub',
             text: `${Math.round((row.amount / (sum.total || 1)) * 100)}% מסך ההוצאות` }),
         ]),
-        el('span', { class: 'num money', text: fmtMoney(row.amount, c) }),
+        el('span', { class: 'num money', html: fmtMoneyHtml(row.amount, c) }),
       ])),
       el('div', { class: 'sub', style: 'margin-block-start:8px',
         text: 'משיכות המזומן מתפרקות כאן לפי ההוצאות במזומן שנרשמו בפועל. מה שטרם הוצא מופיע כ"מזומן בארנק".' }),
@@ -102,9 +100,9 @@ export async function mount(host, tripId) {
           el('span', { class: seg.over ? 'over' : '', style: `width:${seg.over ? 100 : pct}%` }),
         ]),
         el('div', { class: 'sub', style: 'display:flex; justify-content:space-between; margin-block-start:6px' }, [
-          el('span', { class: 'num', text: fmtMoney(seg.amount, c) }),
+          el('span', { class: 'num', html: fmtMoneyHtml(seg.amount, c) }),
           el('span', { class: 'num',
-            text: seg.allocation ? `מתוך ${fmtMoney(seg.allocation, c)}` : '' }),
+            html: seg.allocation ? `מתוך ${fmtMoneyHtml(seg.allocation, c)}` : '' }),
         ]),
       ]);
     }),
@@ -114,15 +112,15 @@ export async function mount(host, tripId) {
     el('div', { class: 'card-title', text: 'תקציב' }),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'תקרה' }),
-      el('span', { class: 'num', text: fmtMoney(sum.ceiling, c) }),
+      el('span', { class: 'num', html: fmtMoneyHtml(sum.ceiling, c) }),
     ]),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'הוקצה ליעדים' }),
-      el('span', { class: 'num', text: fmtMoney(sum.allocated, c) }),
+      el('span', { class: 'num', html: fmtMoneyHtml(sum.allocated, c) }),
     ]),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'לא הוקצה' }),
-      el('span', { class: 'num', text: fmtMoney(sum.unallocated, c) }),
+      el('span', { class: 'num', html: fmtMoneyHtml(sum.unallocated, c) }),
     ]),
     sum.overCeiling
       ? el('div', { class: 'toast error', style: 'margin-block-start:12px' }, [

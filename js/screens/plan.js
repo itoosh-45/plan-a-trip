@@ -6,9 +6,10 @@ import * as rates from '../rates.js';
 import * as cur from '../currencies.js';
 import {
   el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote,
-  fmtMoney, fmtDate, fmtDateRange, nightsBetween,
+  fmtMoney, fmtMoneyHtml, fmtDate, fmtDateRange, nightsBetween,
 } from '../ui.js';
 import { refresh } from '../app.js';
+import { noTripCard } from './no-trip.js';
 
 let openSegmentId = null;   // null = רשימת היעדים; אחרת תצוגת היעד
 let openDay = null;
@@ -202,7 +203,7 @@ async function renderSegment(host, trip, seg) {
     ]),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'הקצאת תקציב' }),
-      el('span', { class: 'num', text: fmtMoney(seg.allocation || 0, trip.currency) }),
+      el('span', { class: 'num', html: fmtMoneyHtml(seg.allocation || 0, trip.currency) }),
     ]),
   ], 'card-gap'));
 
@@ -236,7 +237,7 @@ async function renderSegment(host, trip, seg) {
         ]),
         i.plannedAmount
           ? el('span', {}, [
-              el('div', { class: 'num', text: fmtMoney(i.plannedAmount, i.currency || trip.currency) }),
+              el('div', { class: 'num', html: fmtMoneyHtml(i.plannedAmount, i.currency || trip.currency) }),
               ilsNote(i.plannedAmount, i.currency || trip.currency, i.rateToILS),
             ])
           : null,
@@ -292,10 +293,7 @@ async function renderSegment(host, trip, seg) {
 
 export async function mount(host, tripId) {
   if (!tripId) {
-    host.append(card([
-      el('div', { class: 'empty-title', text: 'אין עדיין טיול' }),
-      el('div', { class: 'dim', text: 'פתחו את ההגדרות וצרו טיול כדי להתחיל לתכנן.' }),
-    ], 'card-gap'));
+    host.append(noTripCard('שחזרו גיבוי קיים או פתחו טיול חדש כדי להתחיל לתכנן.'));
     return;
   }
 
@@ -315,16 +313,16 @@ export async function mount(host, tripId) {
     el('div', { class: 'card-title', text: 'תקציב הטיול' }),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'תקרה' }),
-      el('span', { class: 'num', text: fmtMoney(budget.ceiling, trip.currency) }),
+      el('span', { class: 'num', html: fmtMoneyHtml(budget.ceiling, trip.currency) }),
     ]),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'סך שהוקצה' }),
-      el('span', { class: 'num', text: fmtMoney(budget.allocated, trip.currency) }),
+      el('span', { class: 'num', html: fmtMoneyHtml(budget.allocated, trip.currency) }),
     ]),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow row-title', text: 'יתרה לא מוקצית' }),
       el('span', { class: `pill ${budget.over ? 'over' : 'ok'} num`,
-        text: fmtMoney(budget.unallocated, trip.currency) }),
+        html: fmtMoneyHtml(budget.unallocated, trip.currency) }),
     ]),
     budget.over
       ? el('div', { class: 'toast warning', style: 'margin-block-start:12px',
@@ -350,7 +348,7 @@ export async function mount(host, tripId) {
         el('span', { html: icon('chevronLeft'), style: 'color:var(--color-accent)' }),
       ]),
       el('div', { class: 'row' }, [
-        el('span', { class: 'grow num', text: `${fmtMoney(stat.amount, trip.currency)} מתוך ${fmtMoney(stat.allocation, trip.currency)}` }),
+        el('span', { class: 'grow num', html: `${fmtMoneyHtml(stat.amount, trip.currency)} מתוך ${fmtMoneyHtml(stat.allocation, trip.currency)}` }),
         stat.allocation
           ? el('span', { class: `pill ${stat.over ? 'over' : 'ok'}`, text: stat.over ? 'חריגה' : 'בתקציב' })
           : el('span', { class: 'sub', text: 'ללא הקצאה' }),
@@ -362,7 +360,7 @@ export async function mount(host, tripId) {
   }
 
   host.append(el('button', {
-    class: 'btn btn-primary btn-block card-gap',
+    class: 'btn btn-primary btn-hero card-gap',
     html: `${icon('plus')}<span>יעד חדש</span>`,
     onClick: () => openSegmentSheet(trip, null, it.defaultRange(trip, segs)),
   }));

@@ -15,10 +15,26 @@ export const NAMES = {
   EGP: 'לירה מצרית', JOD: 'דינר ירדני', LKR: 'רופי סרילנקי', NPR: 'רופי נפאלי',
 };
 
-/** הסימן של המטבע לפי התקן. איפה שאין סימן ייחודי (PLN, AED) חוזר הקוד — וזה הנכון. */
-export function symbol(code) {
-  const parts = new Intl.NumberFormat('he-IL', { style: 'currency', currency: code }).formatToParts(0);
+function sign(code, currencyDisplay) {
+  const parts = new Intl.NumberFormat('he-IL', { style: 'currency', currency: code, currencyDisplay })
+    .formatToParts(0);
   return parts.find(p => p.type === 'currency')?.value || code;
+}
+
+const DISPLAY = new Map();
+/**
+ * איזו צורת סימן Intl יציג עבור המטבע. ברירת המחדל מחזירה את הקוד עצמו
+ * למטבעות כמו GEL או PLN, ולכן שם — ורק שם — נופלים ל-narrowSymbol.
+ * כך ₾ ו-zł מופיעים, בזמן ש-A$ ו-CA$ נשארים מובחנים במקום להתמזג ל-$ אחד.
+ */
+export function displayFor(code) {
+  if (!DISPLAY.has(code)) DISPLAY.set(code, sign(code, 'symbol') === code ? 'narrowSymbol' : 'symbol');
+  return DISPLAY.get(code);
+}
+
+/** הסימן של המטבע. איפה שאין שום סימן ייחודי (CHF, AED) חוזר הקוד — וזה הנכון. */
+export function symbol(code) {
+  return sign(code, displayFor(code));
 }
 
 /** התווית המלאה של מטבע. מטבע בלי סימן ייחודי אינו מציג את הקוד פעמיים. */
