@@ -463,7 +463,7 @@ function openNewListSheet(tripId) {
 
 export async function mount(host, tripId) {
   if (!tripId) {
-    host.append(noTripCard('שחזרו גיבוי קיים או פתחו טיול חדש כדי להתחיל.'));
+    host.append(noTripCard('שחזרו גיבוי קיים או פתחו טיול חדש כדי להתחיל.', { intro: true }));
     return;
   }
 

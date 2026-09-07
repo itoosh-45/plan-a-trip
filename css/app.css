@@ -619,3 +619,19 @@ body {
   font-size: var(--text-11);
   color: var(--color-text-mute);
 }
+
+/* ---- נקודות ההיכרות ---- */
+
+/* בלי אייקונים ובלי צבע — רק המונח המודגש. הכרטיס ממורכז, הרשימה לא. */
+.intro-points {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: start;
+}
+.intro-points li {
+  margin-block-end: 8px;
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+}
+.intro-points b { color: var(--color-text); font-weight: 600; }

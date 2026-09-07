@@ -12,6 +12,7 @@ import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtMoneyHtml, fm
 import { refresh, setActiveTrip, navigate } from '../app.js';
 import { openTripWizard } from '../onboarding.js';
 import { openSheetsWizard } from '../sheets-setup.js';
+import { INTRO_LEAD, introPoints } from './no-trip.js';
 
 const CATEGORY_ICONS = [
   'restaurant', 'ride', 'lodging', 'attraction', 'shopping', 'flight',
@@ -832,6 +833,8 @@ export async function mount(host, tripId) {
         : null,
     ],
   ));
+
+  host.append(section('מה אפשר לעשות כאן', INTRO_LEAD, [introPoints()]));
 
   host.append(await sheetsSection());
 
