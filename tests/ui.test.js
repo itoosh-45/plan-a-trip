@@ -86,9 +86,9 @@ export default async function () {
   s.test('tokens.css הוא המקור לצבעים — הערכים נטענו', () => {
     const v = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
     assertEqual(v('--color-highlight'), '#EE4266');
-    assertEqual(v('--color-accent'), '#06BCC1');
-    assertEqual(v('--color-danger'), '#D92D20');
-    assertEqual(v('--radius-card'), '16px');
+    assertEqual(v('--color-accent'), 'oklch(0.60 0.075 195)');
+    assertEqual(v('--color-danger'), 'oklch(0.55 0.14 27)');
+    assertEqual(v('--radius-card'), '12px');
   });
 
   await s.done();
