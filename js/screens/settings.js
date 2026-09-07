@@ -609,8 +609,8 @@ function importExcel(trip) {
 async function runBackup(tripId) {
   try {
     const res = await backup.toFile(tripId);
-    if (res.method === 'share') toast('הגיבוי נשלח לשיתוף', 'success');
-    else if (res.method === 'download') toast('קובץ הגיבוי הורד', 'success');
+    if (res.method === 'share') { toast('הגיבוי נשלח לשיתוף', 'success'); await backup.markBackedUp(); }
+    else if (res.method === 'download') { toast('קובץ הגיבוי הורד', 'success'); await backup.markBackedUp(); }
   } catch (err) { toast(err.message, 'error'); }
 }
 
@@ -746,7 +746,7 @@ export async function mount(host, tripId) {
 
   host.append(section(
     'גיבוי ושחזור',
-    'קובץ JSON, בלחיצת כפתור ובאחריותך — אין גיבוי אוטומטי. גיבוי של טיול בודד אינו כולל מטבעות ושערים, שהם של המכשיר ולא של הטיול.',
+    'האפליקציה מבקשת מהדפדפן לא למחוק את הנתונים לבד, וכל כמה שבועות מזכירה לגבות לקובץ. גיבוי בלחיצת כפתור תמיד זמין כאן. גיבוי של טיול בודד אינו כולל מטבעות ושערים, שהם של המכשיר ולא של הטיול.',
     [
       el('div', { style: 'display:flex; gap:8px' }, [
         el('button', { class: 'btn btn-secondary btn-block', html: `${icon('share')}<span>גבה הכול</span>`,

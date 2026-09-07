@@ -2,6 +2,24 @@ import * as db from './db.js';
 
 const MIME = 'application/json';
 
+const REMIND_KEY = 'lastBackupAt';
+const REMIND_MS = 14 * 24 * 60 * 60 * 1000; // שבועיים
+
+/**
+ * האם עברו שבועיים בלי גיבוי. בהרצה הראשונה אי-פעם רק מסמנת את הרגע ולא
+ * מזכירה מיד — מתקין טרי לא צריך לקבל תזכורת גיבוי בטעינה הראשונה.
+ */
+export async function dueForReminder() {
+  const last = await db.getSetting(REMIND_KEY, null);
+  if (!last) { await markBackedUp(); return false; }
+  return Date.now() - Date.parse(last) > REMIND_MS;
+}
+
+/** מאפסת את שעון התזכורת — גם אחרי גיבוי אמיתי וגם אחרי "תזכיר לי מאוחר יותר". */
+export async function markBackedUp() {
+  await db.setSetting(REMIND_KEY, new Date().toISOString());
+}
+
 const today = () => new Date().toISOString().slice(0, 10);
 const safe = name => (name || '').replace(/[\\/:*?"<>|]/g, '-').trim() || 'trip';
 

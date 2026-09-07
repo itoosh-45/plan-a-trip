@@ -1,8 +1,9 @@
-import { el, icon, toast, fmtDateRange } from './ui.js';
+import { el, icon, toast, fmtDateRange, sheet } from './ui.js';
 import { listTrips, tripDates } from './trips.js';
 import * as migrate from './migrate.js';
 import * as rates from './rates.js';
 import * as cur from './currencies.js';
+import * as backup from './backup.js';
 
 // חמישה טאבים. התוויות קצרות בכוונה — ברוחב טלפון תווית בת שתי מילים
 // נשברת לשתי שורות ומעוותת את גובה הסרגל.
@@ -120,8 +121,34 @@ async function autoRefreshRates() {
   } catch { /* אין רשת או שהשירות נפל — ננסה שוב בטעינה הבאה */ }
 }
 
+/** תזכורת עדינה כל כמה שבועות לגבות לקובץ. רק אם יש מה לגבות. */
+async function maybeRemindBackup() {
+  if (!(await listTrips()).length) return;
+  if (!(await backup.dueForReminder())) return;
+
+  const s = sheet({
+    title: 'לגבות את הטיולים?',
+    body: el('p', { class: 'dim',
+      text: 'עברו כמה שבועות מאז הגיבוי האחרון. אפשר לגבות עכשיו לקובץ, או להידחות.' }),
+    actions: [
+      el('button', { class: 'btn btn-tertiary btn-block', text: 'תזכיר לי מאוחר יותר',
+        onClick: async () => { await backup.markBackedUp(); s.close(); } }),
+      el('button', { class: 'btn btn-primary btn-block', text: 'גבה עכשיו', onClick: async () => {
+        s.close();
+        try {
+          const res = await backup.toFile();
+          await backup.markBackedUp();
+          if (res.method === 'share') toast('הגיבוי נשלח לשיתוף', 'success');
+          else if (res.method === 'download') toast('קובץ הגיבוי הורד', 'success');
+        } catch (err) { toast(err.message, 'error'); }
+      } }),
+    ],
+  });
+}
+
 export async function boot() {
   buildNav();
+  if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   try { activeTrip = localStorage.getItem('activeTripId') || null; } catch { activeTrip = null; }
   const report = await migrate.run();
   await migrate.recolorCategories();
@@ -132,4 +159,5 @@ export async function boot() {
   window.addEventListener('offline', () => toast('אין רשת. האפליקציה ממשיכה לעבוד.', 'warning'));
   await refresh();
   autoRefreshRates();
+  maybeRemindBackup();
 }
