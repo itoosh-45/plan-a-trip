@@ -5,11 +5,13 @@ import * as cur from '../currencies.js';
 import * as money from '../money.js';
 import * as excel from '../excel.js';
 import * as backup from '../backup.js';
+import * as sheets from '../sheets.js';
 import * as catalog from '../catalog.js';
 import * as imported from '../imported.js';
 import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtMoneyHtml, fmtDateRange } from '../ui.js';
 import { refresh, setActiveTrip, navigate } from '../app.js';
 import { openTripWizard } from '../onboarding.js';
+import { openSheetsWizard } from '../sheets-setup.js';
 
 const CATEGORY_ICONS = [
   'restaurant', 'ride', 'lodging', 'attraction', 'shopping', 'flight',
@@ -666,6 +668,73 @@ export function runRestore() {
   });
 }
 
+// ---------- גיבוי לגוגל שיטס ----------
+
+const NEVER = 'עדיין לא סונכרן';
+
+async function sheetsSection() {
+  const st = await sheets.status();
+
+  if (!st.connected) {
+    return section(
+      'גיבוי לגוגל שיטס',
+      'אפשר לחבר גיליון גוגל משלך, והאפליקציה תעדכן אותו לבד בכל פתיחה ויציאה. ההתקנה נעשית פעם אחת ממחשב, ואורכת כחמש דקות. הגיבוי לקובץ ממשיך לעבוד בלי קשר.',
+      [el('button', {
+        class: 'btn btn-secondary btn-block', text: 'הגדרת חיבור',
+        onClick: () => openSheetsWizard(),
+      })],
+    );
+  }
+
+  const when = st.lastSyncAt
+    ? new Intl.DateTimeFormat('he-IL', { dateStyle: 'short', timeStyle: 'short' })
+        .format(new Date(st.lastSyncAt))
+    : NEVER;
+
+  return section(
+    'גיבוי לגוגל שיטס',
+    'הגיליון מתעדכן לבד. הסנכרון חד-כיווני: מה שנכתב בגיליון מתוך גוגל יידרס בעדכון הבא.',
+    [
+      el('div', { class: 'row' }, [
+        el('span', { class: 'grow', text: 'סונכרן לאחרונה' }),
+        el('span', { class: 'sub', text: when }),
+      ]),
+      st.dirty
+        ? el('div', { class: 'row' }, [
+            el('span', { class: 'grow', text: 'ממתין לשליחה' }),
+            el('span', { class: 'sub', text: 'יש שינויים שטרם נשלחו' }),
+          ])
+        : null,
+      // שגיאה מוצגת כאן ולא כהודעה קופצת — כישלון רשת חוזר לא אמור להטריד
+      // מישהו באמצע רישום הוצאה.
+      st.lastError
+        ? el('p', { class: 'wizard-warn', style: 'margin-block-start:8px', text: st.lastError })
+        : null,
+      el('div', { style: 'display:flex; gap:8px; margin-block-start:8px' }, [
+        el('button', { class: 'btn btn-secondary btn-block', html: `${icon('refresh')}<span>סנכרן עכשיו</span>`,
+          onClick: async () => {
+            const res = await sheets.syncNow();
+            if (res.ok) toast('הגיליון עודכן', 'success');
+            else toast(res.error || res.skipped || 'הסנכרון נכשל', 'error');
+            refresh();
+          } }),
+        el('button', { class: 'btn btn-danger', text: 'נתק',
+          onClick: async () => {
+            const ok = await confirmDanger({
+              title: 'לנתק את הגיליון?',
+              body: 'האפליקציה תפסיק לעדכן אותו. הגיליון עצמו וכל מה שכבר נשמר בו יישארו בגוגל כפי שהם.',
+              confirmLabel: 'נתק',
+            });
+            if (!ok) return;
+            await sheets.disconnect();
+            toast('הגיליון נותק', 'success');
+            refresh();
+          } }),
+      ]),
+    ],
+  );
+}
+
 // ---------- המסך ----------
 
 export async function mount(host, tripId) {
@@ -763,6 +832,8 @@ export async function mount(host, tripId) {
         : null,
     ],
   ));
+
+  host.append(await sheetsSection());
 
   host.append(section(
     'מחיקת כל הנתונים',

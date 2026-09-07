@@ -552,3 +552,70 @@ body {
   align-items: center;
   justify-content: center;
 }
+
+/* ---- אשף החיבור לגוגל שיטס ---- */
+
+.wizard-list { margin: 0 0 10px; padding-inline-start: 20px; }
+.wizard-list li { margin-block-end: 6px; }
+
+/* "הצלחת אם" — הסימן שאפשר להתקדם, ולכן ירוק ולא אפור כמו הערת שוליים */
+.wizard-done {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  font-size: var(--text-sm);
+}
+
+.wizard-warn {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.wizard-tip {
+  margin-block-start: 12px;
+  padding: 10px;
+  border-radius: var(--radius-control);
+  background: var(--color-surface-2);
+}
+
+/* טקסט שצריך להקליד או להעתיק מילה במילה — תמיד ltr, גם בתוך משפט עברי */
+.wizard-code {
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: var(--color-surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-sm);
+  direction: ltr;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.wizard-source {
+  direction: ltr;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-11);
+  white-space: pre;
+}
+
+/* שתי האפשרויות שקל להתבלבל ביניהן בשלב 6, מסומנות במפורש */
+.wizard-pick {
+  margin-block-end: 8px;
+  padding: 10px;
+  border-radius: var(--radius-control);
+  border-inline-start: 3px solid var(--color-control-line);
+  background: var(--color-surface-2);
+}
+.wizard-pick.good { border-inline-start-color: var(--color-success); }
+.wizard-pick.bad  { border-inline-start-color: var(--color-danger); opacity: 0.75; }
+
+.wizard-reminder {
+  margin-block-end: 10px;
+  font-size: var(--text-11);
+  color: var(--color-text-mute);
+}

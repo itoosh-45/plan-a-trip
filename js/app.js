@@ -4,6 +4,7 @@ import * as migrate from './migrate.js';
 import * as rates from './rates.js';
 import * as cur from './currencies.js';
 import * as backup from './backup.js';
+import * as sheets from './sheets.js';
 
 // חמישה טאבים. התוויות קצרות בכוונה — ברוחב טלפון תווית בת שתי מילים
 // נשברת לשתי שורות ומעוותת את גובה הסרגל.
@@ -160,4 +161,5 @@ export async function boot() {
   await refresh();
   autoRefreshRates();
   maybeRemindBackup();
+  sheets.watch();
 }
