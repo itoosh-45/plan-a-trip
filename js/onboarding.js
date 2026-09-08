@@ -2,23 +2,28 @@ import * as trips from './trips.js';
 import * as it from './itinerary.js';
 import * as cur from './currencies.js';
 import * as prep from './prep.js';
-import { el, sheet, toast, icon, fmtMoney, fmtDateRange } from './ui.js';
+import {
+  el, sheet, toast, icon, fieldRow, requiredNote, flashRequired,
+  fmtMoney, fmtDateRange,
+} from './ui.js';
+import { dateRangeField } from './daterange.js';
 import { refresh, setActiveTrip } from './app.js';
 import { openCatalogSheet } from './screens/prep.js';
 import { ensureTripCovers } from './screens/plan.js';
 
-const STEPS = ['פרטי הטיול', 'יעדים', 'תקציב', 'רשימת הכנה'];
+/**
+ * ארבעת השלבים. optional אינו קישוט: שלב שאפשר לדלג עליו אומר זאת כבר
+ * בשורת הכותרת שלו, ולא רק בכפתור "דלג" שבתחתית.
+ */
+const STEPS = [
+  { label: 'פרטי הטיול' },
+  { label: 'יעדים', optional: true },
+  { label: 'תקציב', optional: true },
+  { label: 'רשימת הכנה', optional: true },
+];
 
-function field(label, node) {
-  return el('div', { class: 'field-row' }, [el('label', { class: 'field-label', text: label }), node]);
-}
-
-/** בורר טווח תאריכים — 75% מרוחב המסך, ממורכז, בכל מקום שבו הוא מופיע. */
-function dateRange(from, to, { min, max } = {}) {
-  const start = el('input', { class: 'field', type: 'date', value: from || '', min, max, 'aria-label': 'מתאריך' });
-  const end = el('input', { class: 'field', type: 'date', value: to || '', min, max, 'aria-label': 'עד תאריך' });
-  return { node: el('div', { class: 'date-row field-row' }, [start, end]), start, end };
-}
+/** הערה שמופיעה בשלב שאין בו אף שדה חובה — הכוכבית לא מופיעה סתם. */
+const optionalNote = text => el('p', { class: 'sub', style: 'margin:0 0 12px', text });
 
 export function openTripWizard(existing) {
   let trip = existing;
@@ -38,8 +43,9 @@ export function openTripWizard(existing) {
     body.replaceChildren();
     actions.replaceChildren();
 
+    const { label, optional } = STEPS[step];
     body.append(el('div', { class: 'sub', style: 'margin-block-end:8px',
-      text: `שלב ${step + 1} מתוך ${STEPS.length} · ${STEPS[step]}` }));
+      text: `שלב ${step + 1} מתוך ${STEPS.length} · ${label}${optional ? ' · אפשר לדלג' : ''}` }));
 
     if (step === 0) await stepDetails();
     else if (step === 1) await stepSegments();
@@ -67,19 +73,21 @@ export function openTripWizard(existing) {
   async function stepDetails() {
     const name = el('input', { class: 'field', type: 'text', value: trip?.name || '',
       placeholder: 'לדוגמה: תאילנד 2027' });
-    const range = dateRange(trip?.startDate, trip?.endDate);
+    const range = dateRangeField({
+      startDate: trip?.startDate, endDate: trip?.endDate, label: 'טווח התאריכים של הטיול',
+    });
     // כל המטבעות, לא רק הפעילים: מי שנוסע לפרו לא אמור לעבור דרך ההגדרות
     // כדי למצוא את הסול. בשמירה המטבע שנבחר מופעל אם עדיין אינו פעיל.
     const currency = el('select', { class: 'field' }, Object.keys(cur.NAMES).map(c =>
       el('option', { value: c, selected: (trip?.currency || 'ILS') === c, text: cur.label(c) })));
 
     body.append(
-      field('שם הטיול', name),
-      el('label', { class: 'field-label', style: 'margin-block-start:12px', text: 'טווח התאריכים של הטיול' }),
-      range.node,
-      field('מטבע ראשי', currency),
+      requiredNote('חובה למלא רק שדה שמסומן בכוכבית — כאן שם הטיול בלבד. לחצו כאן כדי לסמן אותו.'),
+      fieldRow('שם הטיול', name, { required: true }),
+      fieldRow('טווח התאריכים של הטיול', range.node),
+      fieldRow('מטבע ראשי', currency),
       el('p', { class: 'sub',
-        text: 'התאריכים כאן הם מקור האמת לכל לוח הזמנים. אפשר להשלים אותם אחר כך.' }),
+        text: 'התאריכים כאן הם מקור האמת לכל לוח הזמנים, ואפשר להשלים אותם אחר כך. גם המטבע והתקציב ניתנים לשינוי בכל רגע.' }),
     );
 
     nav({
@@ -89,10 +97,11 @@ export function openTripWizard(existing) {
         try {
           const active = await cur.listActive();
           if (!active.includes(currency.value)) await cur.setActive([...active, currency.value]);
+          const picked = range.read();
           const data = {
             name: name.value,
-            startDate: range.start.value || null,
-            endDate: range.end.value || null,
+            startDate: picked.startDate || null,
+            endDate: picked.endDate || null,
             currency: currency.value,
             totalBudget: trip?.totalBudget || 0,
           };
@@ -100,7 +109,10 @@ export function openTripWizard(existing) {
           setActiveTrip(trip.id);
           step++;
           await render();
-        } catch (err) { toast(err.message, 'error'); }
+        } catch (err) {
+          toast(err.message, 'error');
+          flashRequired(body, { onlyEmpty: true });
+        }
       },
     });
   }
@@ -110,9 +122,10 @@ export function openTripWizard(existing) {
     const segs = (await it.listSegments(trip.id)).filter(x => x.kind !== 'general');
     const city = el('input', { class: 'field', type: 'text', placeholder: 'לדוגמה: בנגקוק' });
     const prefill = it.defaultRange(trip, segs);
-    const range = dateRange(prefill.startDate, prefill.endDate);
+    const range = dateRangeField({ ...prefill, label: 'טווח התאריכים ביעד' });
 
     body.append(
+      requiredNote('אפשר לדלג על השלב הזה. מי שמוסיף יעד — שם היעד והתאריכים הם חובה. לחצו כאן כדי לסמן אותם.'),
       segs.length
         ? el('div', {}, segs.map(seg => el('div', { class: 'row' }, [
             el('div', { class: 'grow' }, [
@@ -127,23 +140,26 @@ export function openTripWizard(existing) {
           ])))
         : el('p', { class: 'dim', style: 'margin:0', text: 'עוד לא הוספת יעדים.' }),
       el('div', { class: 'hairline', style: 'margin-block-start:12px; padding-block-start:12px' }, [
-        field('יעד חדש', city),
-        el('label', { class: 'field-label', text: 'טווח התאריכים ביעד' }),
-        range.node,
+        fieldRow('יעד חדש', city, { required: true }),
+        fieldRow('טווח התאריכים ביעד', range.node, { required: true }),
         el('button', {
           class: 'btn btn-secondary btn-block', style: 'margin-block-start:8px',
           html: `${icon('plus')}<span>הוסף יעד</span>`,
           onClick: async () => {
             try {
-              const covering = await ensureTripCovers(trip, range.start.value, range.end.value);
+              const picked = range.read();
+              const covering = await ensureTripCovers(trip, picked.startDate, picked.endDate);
               if (!covering) return;
               trip = covering;
               await it.saveSegment(trip.id, {
-                city: city.value, startDate: range.start.value, endDate: range.end.value,
+                city: city.value, startDate: picked.startDate, endDate: picked.endDate,
                 currency: trip.currency,
               });
               await render();
-            } catch (err) { toast(err.message, 'error'); }
+            } catch (err) {
+              toast(err.message, 'error');
+              flashRequired(body, { onlyEmpty: true });
+            }
           },
         }),
       ]),
@@ -160,7 +176,10 @@ export function openTripWizard(existing) {
     });
     const inputs = new Map();
 
-    body.append(field(`תקרת תקציב כוללת (${trip.currency})`, ceiling));
+    body.append(
+      optionalNote('אין בשלב הזה שדות חובה. תקציב שלא נקבע עכשיו לא חוסם דבר, ואפשר להזין אותו מאוחר יותר.'),
+      fieldRow(`תקרת תקציב כוללת (${trip.currency})`, ceiling),
+    );
     if (segs.length) {
       body.append(el('div', { class: 'field-label', style: 'margin-block-start:16px', text: 'הקצאה לכל יעד' }));
       for (const seg of segs) {
@@ -194,8 +213,8 @@ export function openTripWizard(existing) {
 
   // ---- שלב 4: מילוי ראשוני של רשימת ההכנה ----
   async function stepPrep() {
-    body.append(el('p', { class: 'dim', style: 'margin:0 0 12px',
-      text: 'אפשר למלא את רשימת ההכנה מהקטלוג עכשיו, או לדלג ולעשות זאת בכל שלב מהטאב "הכנה".' }));
+    body.append(optionalNote(
+      'גם כאן אין חובה: אפשר למלא את רשימת ההכנה מהקטלוג עכשיו, או לסיים ולעשות זאת בכל שלב מהטאב "הכנה".'));
     // הרשימות הקבועות מגיעות מ-prep.STAGES, ולכן רשימה חדשה שנוספת שם
     // מופיעה כאן מעצמה ולא נשכחת באשף
     for (const [stage, label] of Object.entries(prep.STAGES)) {

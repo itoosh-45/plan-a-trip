@@ -305,15 +305,118 @@ body {
   letter-spacing: var(--tracking-head);
 }
 
-/* ---- שורת תאריכים: 75% מרוחב המסך, ממורכזת ---- */
-/* 75% מרוחב המסך, ולא מרוחב הכרטיס שמכיל אותה */
-.date-row {
-  width: min(var(--date-row-width), 100%);
-  margin-inline: auto;
+/* ---- שדות חובה: כוכבית אחת, ומקרא שאפשר ללחוץ עליו ---- */
+/* קטנה ואדומה, בגוון האזהרה הרגיל. זה כל הסימון של "חייבים למלא". */
+.req {
+  color: var(--color-danger);
+  font-size: var(--text-11);
+  line-height: 1;
+  margin-inline-start: 3px;
+}
+.req-note {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-block-end: 12px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--color-surface-2);
+  color: var(--color-text-dim);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  text-align: start;
+  cursor: pointer;
+}
+.req-note .req { font-size: var(--text-sm); margin: 0; }
+
+/* ההבהוב שמצביע על שדות החובה. בלי אנימציה זה עדיין קו מתאר לזמן קצוב. */
+.req-flash {
+  border-radius: var(--radius-control);
+  outline: 2px solid var(--color-danger);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .req-flash { animation: req-pulse 1.6s ease-out; }
+  @keyframes req-pulse {
+    0%, 100% { outline-color: transparent; }
+    12%, 62% { outline-color: var(--color-danger); }
+  }
+}
+
+/* ---- לוח בחירת טווח תאריכים ---- */
+/* לחיצה ראשונה = התחלה, שנייה = סיום, והטווח שביניהן נצבע ברצף אחד. */
+.cal {
+  width: 100%;
+  max-width: 340px;
+  margin-inline: auto;
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
-.date-row > * { flex: 1; min-width: 0; }
+.cal-month {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-head);
+}
+.cal-week, .cal-row { display: grid; grid-template-columns: repeat(7, 1fr); }
+.cal-week {
+  margin-block-end: 2px;
+  font-size: var(--text-11);
+  color: var(--color-text-mute);
+  text-align: center;
+}
+.cal-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.cal-day > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+}
+.cal-day.is-out { color: var(--color-text-mute); opacity: 0.5; }
+.cal-day:disabled { opacity: 0.3; cursor: default; }
+/* הרצף נצבע ברך; רק שני הקצוות נושאים מילוי מלא, והם גם מה שנבחר בפועל */
+.cal-day.is-in, .cal-day.is-start, .cal-day.is-end {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.cal-day.is-start { border-start-start-radius: 999px; border-end-start-radius: 999px; }
+.cal-day.is-end { border-start-end-radius: 999px; border-end-end-radius: 999px; }
+.cal-day.is-today > span { box-shadow: inset 0 0 0 1px var(--color-control-line); }
+.cal-day.is-start > span, .cal-day.is-end > span {
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 500;
+}
+.cal-day:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.cal-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+}
+.cal-status .link-btn { min-height: 32px; padding-block: 4px; }
 
 /* ---- כרטיס טיול (מסך "טיולים" בהגדרות) ---- */
 .trip-card {

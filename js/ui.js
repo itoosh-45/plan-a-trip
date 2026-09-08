@@ -50,6 +50,66 @@ export function sheet({ title, body, actions = [] }) {
   return { close, panel };
 }
 
+/**
+ * שדות חובה.
+ *
+ * באפליקציה הזו כמעט הכול רשות — טיול נוצר משם בלבד, וכל השאר אפשר להשלים
+ * אחר כך. כדי שזה יהיה גלוי ולא סוד, יש בדיוק סימן אחד: כוכבית אדומה קטנה
+ * ליד התווית של שדה חובה. הסימן לא בא לבד — requiredNote הוא המקרא שלו,
+ * והוא גם כפתור: לחיצה עליו מדליקה את שדות החובה עצמם.
+ */
+export function requiredStar() {
+  return el('span', { class: 'req', role: 'img', 'aria-label': 'שדה חובה', text: '*' });
+}
+
+export function fieldLabel(text, { required = false } = {}) {
+  return el('label', { class: 'field-label' }, [text, required ? requiredStar() : null]);
+}
+
+/** תווית מעל פקד. required מסמן את השורה, את התווית ואת הפקד עצמו. */
+export function fieldRow(label, node, { required = false } = {}) {
+  if (required && ['INPUT', 'SELECT', 'TEXTAREA'].includes(node.tagName)) {
+    node.setAttribute('aria-required', 'true');
+  }
+  return el('div', { class: 'field-row', 'data-required': required ? '' : null }, [
+    fieldLabel(label, { required }),
+    node,
+  ]);
+}
+
+const isEmptyRow = row => {
+  const control = row.querySelector('input, select, textarea');
+  if (control) return !String(control.value).trim();
+  // פקד שאינו שדה טקסט — לוח התאריכים — מדווח על עצמו
+  return Boolean(row.querySelector('[data-empty]'));
+};
+
+/**
+ * מדליק לרגע את שדות החובה שבטופס. onlyEmpty מצמצם לאלה שבאמת חסרים, וזה
+ * מה שנקרא אחרי שמירה שנכשלה: הודעת השגיאה אומרת מה חסר, וההבהוב אומר איפה.
+ */
+export function flashRequired(from, { onlyEmpty = false } = {}) {
+  const scope = from?.closest?.('.sheet') || from || document;
+  const rows = [...scope.querySelectorAll('[data-required]')]
+    .filter(row => !onlyEmpty || isEmptyRow(row));
+  for (const row of rows) {
+    row.classList.remove('req-flash');
+    void row.offsetWidth;   // בלי זה אנימציה שרצה כרגע לא מתחילה מחדש
+    row.classList.add('req-flash');
+    setTimeout(() => row.classList.remove('req-flash'), 1600);
+  }
+  return rows.length;
+}
+
+/** המקרא של הכוכבית. לחיצה עליו מראה בדיוק אילו שדות בטופס הם חובה. */
+export function requiredNote(text) {
+  const note = el('button', {
+    type: 'button', class: 'req-note',
+    onClick: () => flashRequired(note),
+  }, [requiredStar(), el('span', { text })]);
+  return note;
+}
+
 export function toast(msg, kind = '') {
   const host = document.getElementById('toasts');
   const node = el('div', { class: `toast ${kind}`.trim(), text: msg, role: 'status' });

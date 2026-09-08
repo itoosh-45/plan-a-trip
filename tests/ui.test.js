@@ -3,6 +3,7 @@ import { ICONS } from '../js/icons.js';
 import {
   icon, el, fmtDate, fmtDateRange, fmtMoneyHtml, nightsBetween, datesBetween,
   fmtDayLabel, fmtDays, startOfWeek, ilsText, ilsNote, ilsPairNote,
+  fieldRow, requiredNote, flashRequired,
 } from '../js/ui.js';
 import { symbol, NAMES } from '../js/currencies.js';
 
@@ -118,6 +119,54 @@ export default async function () {
     assertTrue(nums[0].textContent.includes('400') && nums[1].textContent.includes('2,000'),
       [...nums].map(n => n.textContent).join(' | '));
     assertEqual(ilsPairNote(100, 500, 'ILS', 1), null);
+  });
+
+  s.test('שדה חובה מסומן בכוכבית אחת, ושדה רשות לא מסומן כלל', () => {
+    const must = fieldRow('שם הטיול', el('input', { class: 'field' }), { required: true });
+    const may = fieldRow('מדינה', el('input', { class: 'field' }));
+    assertEqual(must.querySelectorAll('.req').length, 1);
+    assertEqual(must.hasAttribute('data-required'), true);
+    assertEqual(must.querySelector('input').getAttribute('aria-required'), 'true');
+    assertEqual(may.querySelectorAll('.req').length, 0, 'שדה רשות קיבל סימון חובה');
+    assertEqual(may.hasAttribute('data-required'), false);
+  });
+
+  s.test('לחיצה על מקרא הכוכבית מדליקה בדיוק את שדות החובה', () => {
+    const form = el('div', { class: 'sheet' }, [
+      requiredNote('רק שדה עם כוכבית הוא חובה'),
+      fieldRow('שם', el('input', { class: 'field' }), { required: true }),
+      fieldRow('הערה', el('input', { class: 'field' })),
+    ]);
+    document.body.append(form);
+    form.querySelector('.req-note').click();
+    assertEqual(form.querySelectorAll('.req-flash').length, 1);
+    assertEqual(form.querySelector('.req-flash').hasAttribute('data-required'), true);
+    form.remove();
+  });
+
+  s.test('אחרי שמירה שנכשלה מודגשים רק שדות החובה שנשארו ריקים', () => {
+    const filled = el('input', { class: 'field', value: 'תאילנד' });
+    const empty = el('input', { class: 'field' });
+    const form = el('div', { class: 'sheet' }, [
+      fieldRow('שם', filled, { required: true }),
+      fieldRow('יעד', empty, { required: true }),
+    ]);
+    document.body.append(form);
+    assertEqual(flashRequired(form, { onlyEmpty: true }), 1);
+    assertEqual([...form.querySelectorAll('.req-flash')][0].contains(empty), true);
+    form.remove();
+  });
+
+  s.test('לוח תאריכים ריק נספר כשדה חובה חסר, אף שאין בו input', () => {
+    const cal = el('div', { class: 'cal', 'data-empty': '' });
+    const form = el('div', { class: 'sheet' }, [
+      fieldRow('טווח התאריכים', cal, { required: true }),
+    ]);
+    document.body.append(form);
+    assertEqual(flashRequired(form, { onlyEmpty: true }), 1);
+    cal.removeAttribute('data-empty');
+    assertEqual(flashRequired(form, { onlyEmpty: true }), 0, 'לוח שנבחר בו טווח עדיין נספר כריק');
+    form.remove();
   });
 
   await s.done();

@@ -9,6 +9,7 @@ export const ICONS = {
   check:       '<path d="M4 12l5 5L20 6"/>',
   chevronDown: '<path d="M6 9l6 6 6-6"/>',
   chevronLeft: '<path d="M15 6l-6 6 6 6"/>',
+  chevronRight: '<path d="M9 6l6 6-6 6"/>',
   edit:        '<path d="M4 20h4l10-10-4-4L4 16v4Z"/><path d="M13 5l4 4"/>',
   trash:       '<path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/>',
   flight:      '<path d="M3 13l18-6-6 15-3-6-6-3Z"/>',

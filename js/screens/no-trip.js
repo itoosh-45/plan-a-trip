@@ -1,4 +1,4 @@
-import { el, card } from '../ui.js';
+import { el, card, requiredStar } from '../ui.js';
 import { openTripWizard } from '../onboarding.js';
 import { runRestore } from './settings.js';
 
@@ -27,6 +27,20 @@ export function introPoints() {
 }
 
 /**
+ * מה שאומרים למי שעומד ללחוץ "יצירת טיול חדש". הכוכבית מופיעה כאן בפעם
+ * הראשונה, ומיד עם המשמעות שלה — כדי שבאשף עצמו היא כבר תהיה מוכרת ולא
+ * סימן שצריך לפענח.
+ */
+function startNote() {
+  return el('div', { class: 'dim', style: 'margin-block-start:14px' }, [
+    'כדי להתחיל צריך טיול, ולא צריך למלא הכול: חובה רק ',
+    el('b', { text: 'שם הטיול' }),
+    requiredStar(),
+    ' — תאריכים, יעדים, תקציב ורשימת הכנה אפשר להוסיף בהמשך ולשנות בכל רגע. באשף מסומן בכוכבית אדומה רק מה שחייבים למלא.',
+  ]);
+}
+
+/**
  * `intro` נדלק רק במסך שנפתח ראשון. בשאר המסכים אותו הסבר בדיוק היה חוזר
  * על עצמו ארבע פעמים, ולכן שם נשאר המשפט הקצר שמכוון למסך שבו עומדים.
  */
@@ -35,7 +49,7 @@ export function noTripCard(note, { intro = false } = {}) {
     el('div', { class: 'empty-title', text: intro ? 'תכנון טיול ותקציב' : 'אין עדיין טיול' }),
     el('div', { class: 'dim', text: intro ? INTRO_LEAD : note }),
     intro ? introPoints() : null,
-    intro ? el('div', { class: 'dim', style: 'margin-block-start:14px', text: 'כדי להתחיל צריך טיול:' }) : null,
+    intro ? startNote() : null,
     el('div', { class: 'empty-actions' }, [
       el('button', { class: 'btn btn-tertiary', text: 'העלאת גיבוי', onClick: () => runRestore() }),
       el('button', { class: 'btn btn-tertiary', text: 'יצירת טיול חדש', onClick: () => openTripWizard(null) }),
