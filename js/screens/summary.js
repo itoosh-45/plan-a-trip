@@ -1,6 +1,7 @@
 import * as trips from '../trips.js';
 import * as money from '../money.js';
-import { el, card, icon, fmtMoney, fmtMoneyHtml, fmtDateRange } from '../ui.js';
+import * as rates from '../rates.js';
+import { el, card, icon, ilsNote, ilsText, ilsPairNote, fmtMoney, fmtMoneyHtml, fmtDateRange } from '../ui.js';
 import { noTripCard } from './no-trip.js';
 
 let chartInstance = null;
@@ -22,13 +23,14 @@ function renderPie(canvas, rows) {
   });
 }
 
-function statTile(label, value, tone = '') {
+function statTile(label, value, tone = '', note = '') {
   return el('div', {
     style: `flex:1; min-width:0; padding:12px; border-radius:var(--radius-control);
             background:${tone || 'var(--color-surface-2)'}`,
   }, [
     el('div', { class: 'sub', style: 'margin:0', text: label }),
     el('div', { class: 'num stat-value', html: value }),
+    note ? el('div', { class: 'sub num ils', text: note }) : null,
   ]);
 }
 
@@ -45,6 +47,9 @@ export async function mount(host, tripId) {
   // תכנון התקציב נערך במסך ההוצאות. כאן הוא מוצג בלבד, לצד מה שבפועל.
   const budgetOf = new Map(budgetSummary.rows.map(r => [r.id, r]));
   const c = trip.currency;
+  // כל הסכומים במסך הזה כבר מומרים למטבע הטיול, ולכן די בשער אחד
+  const rate = (await rates.rateMap([c]))[(c || 'ILS').toUpperCase()];
+  const ils = amount => ilsText(amount, c, rate);
 
   host.append(card([
     el('div', { class: 'screen-title', text: trip.name }),
@@ -52,18 +57,19 @@ export async function mount(host, tripId) {
       ? el('div', { class: 'sub', text: fmtDateRange(trip.startDate, trip.endDate) })
       : null,
     el('div', { style: 'display:flex; gap:8px; margin-block-start:12px' }, [
-      statTile('סך הוצאות', fmtMoneyHtml(sum.total, c)),
+      statTile('סך הוצאות', fmtMoneyHtml(sum.total, c), '', ils(sum.total)),
       statTile(
         sum.overCeiling ? 'חריגה מהתקרה' : 'נותר מהתקרה',
         fmtMoneyHtml(Math.abs(sum.remaining), c),
         sum.overCeiling
           ? 'color-mix(in srgb, var(--color-danger) 12%, transparent)'
           : 'color-mix(in srgb, var(--color-success) 12%, transparent)',
+        ils(Math.abs(sum.remaining)),
       ),
     ]),
     el('div', { style: 'display:flex; gap:8px; margin-block-start:8px' }, [
-      statTile('מתוכנן במסלול', fmtMoneyHtml(planned, c)),
-      statTile('מזומן בארנק', fmtMoneyHtml(sum.cashInWallet, c)),
+      statTile('מתוכנן במסלול', fmtMoneyHtml(planned, c), '', ils(planned)),
+      statTile('מזומן בארנק', fmtMoneyHtml(sum.cashInWallet, c), '', ils(sum.cashInWallet)),
     ]),
   ], 'card-gap'));
 
@@ -84,8 +90,9 @@ export async function mount(host, tripId) {
           el('span', { style: 'text-align:end' }, [
             el('div', { class: 'num money', html: fmtMoneyHtml(row.amount, c) }),
             plan
-              ? el('div', { class: 'sub num', html: `מתוך ${fmtMoneyHtml(plan.budget, c)}` })
+              ? el('div', { class: 'sub' }, ['מתוך ', el('span', { class: 'num', html: fmtMoneyHtml(plan.budget, c) })])
               : null,
+            ilsNote(row.amount, c, rate),
             plan && plan.over
               ? el('div', { class: 'pill over', text: `חריגה של ${fmtMoney(-plan.remaining, c)}` })
               : null,
@@ -115,9 +122,11 @@ export async function mount(host, tripId) {
         ]),
         el('div', { class: 'sub', style: 'display:flex; justify-content:space-between; margin-block-start:6px' }, [
           el('span', { class: 'num', html: fmtMoneyHtml(seg.amount, c) }),
-          el('span', { class: 'num',
-            html: seg.allocation ? `מתוך ${fmtMoneyHtml(seg.allocation, c)}` : '' }),
+          seg.allocation
+            ? el('span', {}, ['מתוך ', el('span', { class: 'num', html: fmtMoneyHtml(seg.allocation, c) })])
+            : el('span', {}),
         ]),
+        ilsPairNote(seg.amount, seg.allocation, c, rate),
       ]);
     }),
   ], 'card-gap'));
@@ -126,21 +135,33 @@ export async function mount(host, tripId) {
     el('div', { class: 'card-title', text: 'תקציב' }),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'תקרה' }),
-      el('span', { class: 'num', html: fmtMoneyHtml(sum.ceiling, c) }),
+      el('span', { style: 'text-align:end' }, [
+        el('div', { class: 'num', html: fmtMoneyHtml(sum.ceiling, c) }),
+        ilsNote(sum.ceiling, c, rate),
+      ]),
     ]),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'הוקצה ליעדים' }),
-      el('span', { class: 'num', html: fmtMoneyHtml(sum.allocated, c) }),
+      el('span', { style: 'text-align:end' }, [
+        el('div', { class: 'num', html: fmtMoneyHtml(sum.allocated, c) }),
+        ilsNote(sum.allocated, c, rate),
+      ]),
     ]),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'לא הוקצה' }),
-      el('span', { class: 'num', html: fmtMoneyHtml(sum.unallocated, c) }),
+      el('span', { style: 'text-align:end' }, [
+        el('div', { class: 'num', html: fmtMoneyHtml(sum.unallocated, c) }),
+        ilsNote(sum.unallocated, c, rate),
+      ]),
     ]),
     budgetSummary.budgeted
       ? el('div', { class: 'row' }, [
           el('span', { class: 'grow dim', text: 'מתוקצב לפי קטגוריות' }),
-          el('span', { class: `num ${budgetSummary.over ? 'pill over' : ''}`.trim(),
-            html: fmtMoneyHtml(budgetSummary.budgeted, c) }),
+          el('span', { style: 'text-align:end' }, [
+            el('div', { class: `num ${budgetSummary.over ? 'pill over' : ''}`.trim(),
+              html: fmtMoneyHtml(budgetSummary.budgeted, c) }),
+            ilsNote(budgetSummary.budgeted, c, rate),
+          ]),
         ])
       : null,
     sum.overCeiling

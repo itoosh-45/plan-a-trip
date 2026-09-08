@@ -203,8 +203,32 @@ export function amountField({ amount = '', currency = 'ILS', currencies = ['ILS'
   };
 }
 
-/** המרה לשקלים בטקסט משני. מטבע שהוא כבר שקל אינו מקבל המרה. */
+/**
+ * שווי הסכום בשקלים, כטקסט. מטבע שהוא כבר שקל אינו מקבל המרה, וגם לא סכום
+ * ריק או מטבע שאין לו שער — הערה שקרית גרועה מהיעדר הערה.
+ */
+export function ilsText(amount, currency, rateToILS) {
+  if (!amount || !currency || currency === 'ILS' || !rateToILS) return '';
+  return `≈ ${fmtMoney(amount * rateToILS, 'ILS')}`;
+}
+
+/** אותה המרה, כשורה משנית מתחת לסכום. */
 export function ilsNote(amount, currency, rateToILS) {
-  if (!amount || !currency || currency === 'ILS' || !rateToILS) return null;
-  return el('div', { class: 'sub num', text: `≈ ${fmtMoney(amount * rateToILS, 'ILS')}` });
+  const text = ilsText(amount, currency, rateToILS);
+  return text ? el('div', { class: 'sub num ils', text }) : null;
+}
+
+/**
+ * שורת המרה לזוג סכומים שמוצג כ"X מתוך Y" — הערה אחת לשניהם, במקום שתי
+ * שורות שאומרות את אותו הדבר.
+ */
+export function ilsPairNote(amount, of, currency, rateToILS) {
+  const a = ilsText(amount, currency, rateToILS);
+  if (!a) return null;
+  const b = ilsText(of, currency, rateToILS);
+  // שני מספרים ומילה עברית ביניהם: כל מספר בתוך .num משלו, והסדר נקבע
+  // לפי כיוון העברית של השורה — לא לפי בידי בתוך מחרוזת מעורבת אחת.
+  return el('div', { class: 'sub ils' }, b
+    ? [el('span', { class: 'num', text: a }), ' מתוך ', el('span', { class: 'num', text: b.replace('≈ ', '') })]
+    : [el('span', { class: 'num', text: a })]);
 }

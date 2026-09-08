@@ -8,7 +8,7 @@ import * as backup from '../backup.js';
 import * as sheets from '../sheets.js';
 import * as catalog from '../catalog.js';
 import * as imported from '../imported.js';
-import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtMoneyHtml, fmtDateRange } from '../ui.js';
+import { el, card, sheet, toast, confirmDanger, icon, ilsNote, fmtMoney, fmtMoneyHtml, fmtDateRange } from '../ui.js';
 import { refresh, setActiveTrip, navigate } from '../app.js';
 import { openTripWizard } from '../onboarding.js';
 import { openSheetsWizard } from '../sheets-setup.js';
@@ -30,7 +30,7 @@ function section(title, note, children) {
 
 // ---------- טיולים ----------
 
-function tripCard(trip, totals, isActive) {
+function tripCard(trip, totals, isActive, rate) {
   return el('article', { class: 'trip-card card-gap', 'aria-current': String(isActive) }, [
     el('div', { class: 'trip-card-head' }, [
       el('button', {
@@ -50,7 +50,10 @@ function tripCard(trip, totals, isActive) {
       onClick: () => { setActiveTrip(trip.id); navigate('summary'); },
     }, [
       el('span', { class: 'dim', text: `סה"כ הוצאות (${totals.count})` }),
-      el('span', { class: 'total num', html: fmtMoneyHtml(totals.amount, trip.currency) }),
+      el('span', { style: 'text-align:end' }, [
+        el('div', { class: 'total num', html: fmtMoneyHtml(totals.amount, trip.currency) }),
+        ilsNote(totals.amount, trip.currency, rate),
+      ]),
     ]),
     el('div', { style: 'display:flex; gap:8px; padding:0 14px 10px' }, [
       el('button', {
@@ -755,7 +758,10 @@ export async function mount(host, tripId) {
   host.append(el('h2', { class: 'screen-title', style: 'margin-block-start:16px', text: 'טיולים' }));
   host.append(el('p', { class: 'sub', style: 'margin:0 0 12px',
     text: 'לחיצה על כרטיס פותחת את הסיכום שלו. הטיול הפעיל הוא זה שכל שאר המסכים מציגים.' }));
-  for (const t of all) host.append(tripCard(t, totals.get(t.id), t.id === tripId));
+  const tripRates = await rates.rateMap(all.map(t => t.currency));
+  for (const t of all) {
+    host.append(tripCard(t, totals.get(t.id), t.id === tripId, tripRates[(t.currency || 'ILS').toUpperCase()]));
+  }
   host.append(el('button', {
     class: 'btn btn-primary btn-hero card-gap',
     html: `${icon('plus')}<span>טיול חדש</span>`,

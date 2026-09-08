@@ -3,7 +3,8 @@ import * as it from '../itinerary.js';
 import * as prep from '../prep.js';
 import * as catalog from '../catalog.js';
 import * as imported from '../imported.js';
-import { el, card, sheet, toast, confirmDanger, icon, fmtMoneyHtml } from '../ui.js';
+import * as rates from '../rates.js';
+import { el, card, sheet, toast, confirmDanger, icon, ilsText, fmtMoneyHtml } from '../ui.js';
 import { refresh } from '../app.js';
 import { noTripCard } from './no-trip.js';
 
@@ -159,7 +160,7 @@ function enableDrag(node, tripId, task) {
   });
 }
 
-function taskRow(tripId, task, segs, currency) {
+function taskRow(tripId, task, segs, currency, rate) {
   const seg = segs.find(x => x.id === task.segmentId);
   const node = el('div', {
     class: `task ${task.done ? 'done' : ''}`.trim(),
@@ -182,6 +183,9 @@ function taskRow(tripId, task, segs, currency) {
         seg ? el('span', { text: ` · ${seg.city}` }) : null,
         task.plannedAmount
           ? el('span', { class: 'num', html: ` · ${fmtMoneyHtml(task.plannedAmount, currency)}` })
+          : null,
+        ilsText(task.plannedAmount, currency, rate)
+          ? el('span', { class: 'num', text: ` · ${ilsText(task.plannedAmount, currency, rate)}` })
           : null,
       ]),
     ]),
@@ -472,6 +476,7 @@ export async function mount(host, tripId) {
     trips.getTrip(tripId), it.listSegments(tripId), prep.listTasks(tripId), prep.listsFor(tripId),
   ]);
   const currency = trip?.currency || 'ILS';
+  const rate = (await rates.rateMap([currency]))[currency.toUpperCase()];
 
   host.append(el('div', { class: 'card-gap filter-row', style: 'display:flex; gap:8px; overflow-x:auto; padding-block:4px' }, [
     el('button', {
@@ -538,7 +543,7 @@ export async function mount(host, tripId) {
           'data-group': key,
           class: 'drop-zone',
         }, groupOpen
-          ? inGroup.map(t => taskRow(tripId, t, segs, currency))
+          ? inGroup.map(t => taskRow(tripId, t, segs, currency, rate))
           : []));
       }
     }

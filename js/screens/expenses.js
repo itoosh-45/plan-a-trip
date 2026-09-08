@@ -4,8 +4,10 @@ import * as expenses from '../expenses.js';
 import * as money from '../money.js';
 import * as budgets from '../budgets.js';
 import * as cur from '../currencies.js';
+import * as rates from '../rates.js';
 import {
-  el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote, fmtMoney, fmtMoneyHtml, fmtDate,
+  el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote, ilsText, ilsPairNote,
+  fmtMoney, fmtMoneyHtml, fmtDate,
 } from '../ui.js';
 import { refresh } from '../app.js';
 import { noTripCard } from './no-trip.js';
@@ -104,7 +106,7 @@ async function openExpenseSheet(trip, existing, kind = 'expense') {
 
 // ---------- ווידג׳ט ארנק ----------
 
-function walletCard(trip, balances, cashRows, cats, segs) {
+function walletCard(trip, balances, cashRows, cats, segs, fx) {
   const codes = Object.keys(balances);
   const body = [
     el('div', { style: 'display:flex; align-items:center; gap:8px' }, [
@@ -124,10 +126,13 @@ function walletCard(trip, balances, cashRows, cats, segs) {
   for (const code of codes) {
     body.push(el('div', { class: 'row' }, [
       el('span', { class: 'grow', text: code }),
-      el('span', {
-        class: 'num money', style: balances[code] < 0 ? 'color:var(--color-danger)' : null,
-        html: fmtMoneyHtml(balances[code], code),
-      }),
+      el('span', { style: 'text-align:end' }, [
+        el('div', {
+          class: 'num money', style: balances[code] < 0 ? 'color:var(--color-danger)' : null,
+          html: fmtMoneyHtml(balances[code], code),
+        }),
+        ilsNote(balances[code], code, fx[code]),
+      ]),
     ]));
   }
 
@@ -158,7 +163,10 @@ function walletCard(trip, balances, cashRows, cats, segs) {
           el('span', { class: 'sub',
             text: `${c.name} · ${segs.find(sg => sg.id === r.segmentId)?.city || 'כללי'} · ${fmtDate(r.date)}` }),
         ]),
-        el('span', { class: 'num', html: `−${fmtMoneyHtml(r.amount, r.currency)}` }),
+        el('span', { style: 'text-align:end' }, [
+          el('div', { class: 'num', html: `−${fmtMoneyHtml(r.amount, r.currency)}` }),
+          ilsNote(r.amount, r.currency, r.rateToILS || fx[r.currency]),
+        ]),
       ]));
     }
   }
@@ -302,7 +310,7 @@ async function openAddBudgetSheet(trip, summary) {
   });
 }
 
-function budgetCard(trip, summary) {
+function budgetCard(trip, summary, rate) {
   const c = trip.currency;
   const pct = summary.ceiling
     ? Math.min(Math.round((summary.budgeted / summary.ceiling) * 100), 100)
@@ -311,10 +319,16 @@ function budgetCard(trip, summary) {
   const body = [
     el('div', { style: 'display:flex; align-items:baseline; gap:8px' }, [
       el('span', { class: 'grow card-title', style: 'margin:0', text: 'תכנון תקציב' }),
-      el('span', { class: 'sub num',
-        html: summary.ceiling
-          ? `${fmtMoneyHtml(summary.budgeted, c)} מתוך ${fmtMoneyHtml(summary.ceiling, c)}`
-          : fmtMoneyHtml(summary.budgeted, c) }),
+      el('span', { style: 'text-align:end' }, [
+        el('div', { class: 'sub', style: 'margin:0' }, summary.ceiling
+          ? [
+              el('span', { class: 'num', html: fmtMoneyHtml(summary.budgeted, c) }),
+              ' מתוך ',
+              el('span', { class: 'num', html: fmtMoneyHtml(summary.ceiling, c) }),
+            ]
+          : [el('span', { class: 'num', html: fmtMoneyHtml(summary.budgeted, c) })]),
+        ilsPairNote(summary.budgeted, summary.ceiling, c, rate),
+      ]),
     ]),
     summary.ceiling
       ? el('div', { class: 'bar', style: 'margin-block-start:8px' }, [
@@ -339,10 +353,12 @@ function budgetCard(trip, summary) {
         el('span', { class: 'grow' }, [
           el('span', { style: 'display:block', text: r.name }),
           el('span', { class: 'sub', html: `שולם ${fmtMoneyHtml(r.spent, c)}${
-            r.planned ? ` · מתוכנן במסלול ${fmtMoneyHtml(r.planned, c)}` : ''}` }),
+            r.planned ? ` · מתוכנן במסלול ${fmtMoneyHtml(r.planned, c)}` : ''}${
+            ilsText(r.spent, c, rate) ? ` · ${ilsText(r.spent, c, rate)}` : ''}` }),
         ]),
         el('span', { style: 'text-align:end' }, [
           el('div', { class: 'num money', html: fmtMoneyHtml(r.budget, c) }),
+          ilsNote(r.budget, c, rate),
           el('div', { class: `pill ${r.over ? 'over' : 'ok'}`,
             text: r.over ? `חריגה של ${fmtMoney(-r.remaining, c)}` : `נותרו ${fmtMoney(r.remaining, c)}` }),
         ]),
@@ -389,14 +405,23 @@ export async function mount(host, tripId) {
     money.budgetByCategory(tripId),
   ]);
 
+  // שערי התצוגה: מטבע הטיול, מטבעות הארנק, ומטבע של כל רשומה שאין לה שער צרוב
+  const fx = await rates.rateMap([
+    trip.currency, ...Object.keys(totals.balances), ...rows.map(r => r.currency),
+  ]);
+  const tripRate = fx[(trip.currency || 'ILS').toUpperCase()];
+
   const cashRows = rows.filter(r => r.kind === 'cashSpend');
-  host.append(walletCard(trip, totals.balances, cashRows, cats, segs));
-  host.append(budgetCard(trip, budgetSummary));
+  host.append(walletCard(trip, totals.balances, cashRows, cats, segs, fx));
+  host.append(budgetCard(trip, budgetSummary, tripRate));
 
   host.append(card([
     el('div', { style: 'display:flex; align-items:baseline; justify-content:space-between' }, [
       el('span', { class: 'dim', text: `סה"כ הוצאות (${rows.filter(r => r.kind !== 'cashSpend').length})` }),
-      el('span', { class: 'num money-lg', html: fmtMoneyHtml(totals.total, trip.currency) }),
+      el('span', { style: 'text-align:end' }, [
+        el('div', { class: 'num money-lg', html: fmtMoneyHtml(totals.total, trip.currency) }),
+        ilsNote(totals.total, trip.currency, tripRate),
+      ]),
     ]),
   ], 'card-gap'));
 
@@ -423,7 +448,10 @@ export async function mount(host, tripId) {
     host.append(card([
       el('div', { style: 'display:flex; align-items:center; gap:8px; margin-block-end:4px' }, [
         el('span', { class: 'grow row-title', text: seg.city }),
-        el('span', { class: 'num money', html: fmtMoneyHtml(stat.amount, trip.currency) }),
+        el('span', { style: 'text-align:end' }, [
+          el('div', { class: 'num money', html: fmtMoneyHtml(stat.amount, trip.currency) }),
+          ilsNote(stat.amount, trip.currency, tripRate),
+        ]),
       ]),
       stat.allocation
         ? el('div', { class: 'sub' }, [
@@ -450,7 +478,7 @@ export async function mount(host, tripId) {
           ]),
           el('span', { style: 'text-align:end' }, [
             el('div', { class: 'num money', html: fmtMoneyHtml(r.amount, r.currency) }),
-            ilsNote(r.amount, r.currency, r.rateToILS),
+            ilsNote(r.amount, r.currency, r.rateToILS || fx[r.currency]),
           ]),
         ]);
       }),

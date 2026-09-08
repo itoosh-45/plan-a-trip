@@ -199,5 +199,15 @@ export default async function () {
     assertEqual((await rates.getRate('USD')).rate, 3.9);
   });
 
+  s.test('rateMap מחזיר שער לכל מטבע, ו-null למטבע בלי שער שמור', async () => {
+    await db.wipe();
+    await rates.setManualRate('EUR', 4);
+    const map = await rates.rateMap(['ILS', 'eur', 'EUR', 'XYZ', null]);
+    assertEqual(map.ILS, 1);
+    assertEqual(map.EUR, 4);
+    assertEqual(map.XYZ, null, 'מטבע לא מוכר קיבל שער מומצא');
+    assertEqual(Object.keys(map).sort(), ['EUR', 'ILS', 'XYZ']);
+  });
+
   await s.done();
 }

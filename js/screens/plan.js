@@ -5,7 +5,7 @@ import * as money from '../money.js';
 import * as rates from '../rates.js';
 import * as cur from '../currencies.js';
 import {
-  el, card, sheet, toast, confirmDanger, icon, amountField,
+  el, card, sheet, toast, confirmDanger, icon, amountField, ilsText, ilsNote, ilsPairNote,
   fmtMoney, fmtMoneyHtml, fmtDate, fmtDateRange, fmtDayLabel, fmtWeekday, fmtMonth, fmtDays,
   nightsBetween,
 } from '../ui.js';
@@ -250,10 +250,13 @@ async function openItemSheet(ctx, date, existing, bounds = {}) {
 
 /**
  * רשימת היום היא רשימת משימות: כותרת, סימון "בוצע", ופרטים רק אם הוזנו.
- * סכום מופיע כאן רק כשמישהו טרח להזין אותו בטופס המפורט.
+ * סכום מופיע כאן רק כשמישהו טרח להזין אותו בטופס המפורט, ולצדו השווי
+ * בשקלים — לפי השער שנצרב על הפריט, ובלעדיו לפי השער הנוכחי של המטבע.
  */
 function itemRow(ctx, date, item, bounds) {
   const type = typeOf(item.type);
+  const currency = item.currency || ctx.trip.currency;
+  const ils = ilsText(item.plannedAmount, currency, item.rateToILS || ctx.fx[currency]);
   const details = [
     item.type && item.type !== 'other' ? type.label : null,
     item.time || null,
@@ -282,8 +285,9 @@ function itemRow(ctx, date, item, bounds) {
             details ? el('span', { text: details }) : null,
             item.plannedAmount
               ? el('span', { class: 'num',
-                  html: `${details ? ' · ' : ''}${fmtMoneyHtml(item.plannedAmount, item.currency || ctx.trip.currency)}` })
+                  html: `${details ? ' · ' : ''}${fmtMoneyHtml(item.plannedAmount, currency)}` })
               : null,
+            ils ? el('span', { class: 'num', text: ` · ${ils}` }) : null,
           ])
         : null,
     ]),
@@ -359,6 +363,18 @@ function addRow(ctx, date, list, bounds) {
 }
 
 // ---------- יום, קבוצה, כותרת יעד ----------
+
+/**
+ * "סכום מתוך סכום". כל מספר בתוך .num משלו, והמילה העברית ביניהם טקסט רגיל:
+ * מחרוזת מעורבת בתוך .num (שהוא direction:ltr) מוצגת בסדר הפוך למי שקורא עברית.
+ */
+function outOf(amount, of, currency) {
+  return el('div', {}, [
+    el('span', { class: 'num', html: fmtMoneyHtml(amount, currency) }),
+    ' מתוך ',
+    el('span', { class: 'num', html: fmtMoneyHtml(of, currency) }),
+  ]);
+}
 
 const countLabel = n => (n === 0 ? 'אין תכנון' : n === 1 ? 'פריט אחד' : `${n} פריטים`);
 
@@ -456,8 +472,10 @@ function segmentHeaderCard(ctx, seg) {
       ]),
     ]),
     el('div', { class: 'row' }, [
-      el('span', { class: 'grow num',
-        html: `${fmtMoneyHtml(stat.amount, ctx.trip.currency)} מתוך ${fmtMoneyHtml(stat.allocation, ctx.trip.currency)}` }),
+      el('span', { class: 'grow' }, [
+        outOf(stat.amount, stat.allocation, ctx.trip.currency),
+        ilsPairNote(stat.amount, stat.allocation, ctx.trip.currency, ctx.rate),
+      ]),
       stat.allocation
         ? el('span', { class: `pill ${stat.over ? 'over' : 'ok'}`, text: stat.over ? 'חריגה' : 'בתקציב' })
         : el('span', { class: 'sub', text: 'ללא הקצאה' }),
@@ -538,21 +556,29 @@ function collapsibleOf(groups, grouping) {
 
 // ---------- תקציב הטיול ----------
 
-function tripBudgetCard(trip, budget) {
+function tripBudgetCard(trip, budget, rate) {
+  const amountCell = (amount, cls = 'num') => el('span', { style: 'text-align:end' }, [
+    el('div', { class: cls, html: fmtMoneyHtml(amount, trip.currency) }),
+    ilsNote(amount, trip.currency, rate),
+  ]);
+
   return card([
     el('div', { class: 'card-title', text: 'תקציב הטיול' }),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'תקרה' }),
-      el('span', { class: 'num', html: fmtMoneyHtml(budget.ceiling, trip.currency) }),
+      amountCell(budget.ceiling),
     ]),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'סך שהוקצה ליעדים' }),
-      el('span', { class: 'num', html: fmtMoneyHtml(budget.allocated, trip.currency) }),
+      amountCell(budget.allocated),
     ]),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow row-title', text: 'יתרה לא מוקצית' }),
-      el('span', { class: `pill ${budget.over ? 'over' : 'ok'} num`,
-        html: fmtMoneyHtml(budget.unallocated, trip.currency) }),
+      el('span', { style: 'text-align:end' }, [
+        el('div', { class: `pill ${budget.over ? 'over' : 'ok'} num`,
+          html: fmtMoneyHtml(budget.unallocated, trip.currency) }),
+        ilsNote(budget.unallocated, trip.currency, rate),
+      ]),
     ]),
     budget.over
       ? el('div', { class: 'toast warning', style: 'margin-block-start:12px',
@@ -611,8 +637,10 @@ function renderSegmentList(ctx) {
         el('span', { html: icon('chevronLeft'), style: 'color:var(--color-accent)' }),
       ]),
       el('div', { class: 'row' }, [
-        el('span', { class: 'grow num',
-          html: `${fmtMoneyHtml(stat.amount, ctx.trip.currency)} מתוך ${fmtMoneyHtml(stat.allocation, ctx.trip.currency)}` }),
+        el('span', { class: 'grow' }, [
+          outOf(stat.amount, stat.allocation, ctx.trip.currency),
+          ilsPairNote(stat.amount, stat.allocation, ctx.trip.currency, ctx.rate),
+        ]),
         stat.allocation
           ? el('span', { class: `pill ${stat.over ? 'over' : 'ok'}`, text: stat.over ? 'חריגה' : 'בתקציב' })
           : el('span', { class: 'sub', text: 'ללא הקצאה' }),
@@ -642,12 +670,15 @@ export async function mount(host, tripId) {
     trips.budgetSummary(tripId),
   ]);
 
+  // שערי התצוגה: מטבע הטיול ומטבעות הפריטים שאין להם שער צרוב
+  const fx = await rates.rateMap([trip.currency, ...items.map(i => i.currency)]);
+
   const prefs = readPrefs(tripId);
   const days = it.tripDays(trip, segs);
   prunePrefs(tripId, prefs, days);
 
   const ctx = {
-    trip, segs, prefs, tasks, totals,
+    trip, segs, prefs, tasks, totals, fx, rate: fx[(trip.currency || 'ILS').toUpperCase()],
     byDate: it.itemsByDate(items),
     generalId: segs.find(s => s.kind === 'general')?.id ?? null,
   };
@@ -671,7 +702,7 @@ export async function mount(host, tripId) {
     }, [el('span', { html: icon('chevronLeft') }), el('span', { text: 'חזרה לכל היעדים' })]));
     host.append(segmentHeaderCard(ctx, openSeg));
   } else {
-    host.append(tripBudgetCard(trip, budget));
+    host.append(tripBudgetCard(trip, budget, ctx.rate));
   }
 
   if (!openSeg && prefs.view === 'days' && !days.length) {

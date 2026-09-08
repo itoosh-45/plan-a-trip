@@ -41,6 +41,18 @@ export async function stamp(currency) {
   };
 }
 
+/**
+ * שערי המרה לשקל לקבוצת מטבעות, לתצוגה בלבד. מטבע שאין לו שער שמור מקבל
+ * null, וכל מי שמציג ממיר ל"בלי הערת שקלים" — עדיף בלי המרה מאשר המרה שקרית.
+ */
+export async function rateMap(currencies) {
+  const out = {};
+  for (const code of new Set([].concat(currencies).filter(Boolean).map(c => String(c).toUpperCase()))) {
+    out[code] = code === BASE ? 1 : (await getRate(code))?.rate ?? null;
+  }
+  return out;
+}
+
 /** ערך הרשומה בשקלים לפי השער שנצרב עליה. בלי שער — הסכום הגולמי, בלי לקרוס. */
 export function toILS(rec) {
   const amount = Number(rec?.amount) || 0;

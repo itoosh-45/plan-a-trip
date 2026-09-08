@@ -1,6 +1,9 @@
 import { suite, assertEqual, assertTrue } from './harness.js';
 import { ICONS } from '../js/icons.js';
-import { icon, el, fmtDate, fmtDateRange, fmtMoneyHtml, nightsBetween, datesBetween } from '../js/ui.js';
+import {
+  icon, el, fmtDate, fmtDateRange, fmtMoneyHtml, nightsBetween, datesBetween,
+  fmtDayLabel, fmtDays, startOfWeek, ilsText, ilsNote, ilsPairNote,
+} from '../js/ui.js';
 import { symbol, NAMES } from '../js/currencies.js';
 
 export default async function () {
@@ -89,6 +92,32 @@ export default async function () {
     assertEqual(v('--color-accent'), 'oklch(0.60 0.075 195)');
     assertEqual(v('--color-danger'), 'oklch(0.55 0.14 27)');
     assertEqual(v('--radius-card'), '12px');
+  });
+
+  s.test('fmtDayLabel נותן שם יום עברי, ו-startOfWeek נופל על יום א׳', () => {
+    assertTrue(fmtDayLabel('2026-09-06').startsWith('יום א׳'), fmtDayLabel('2026-09-06'));
+    assertTrue(fmtDayLabel('2026-09-12').startsWith('שבת'), fmtDayLabel('2026-09-12'));
+    assertEqual(startOfWeek('2026-09-10'), '2026-09-06');
+    assertEqual(startOfWeek('2026-09-06'), '2026-09-06');
+    assertEqual([fmtDays(1), fmtDays(2), fmtDays(5)], ['יום אחד', 'יומיים', '5 ימים']);
+  });
+
+  s.test('שווי בשקלים מוצג רק כשיש מה להמיר', () => {
+    assertTrue(ilsText(100, 'EUR', 4).includes('400'), ilsText(100, 'EUR', 4));
+    assertEqual(ilsText(100, 'ILS', 1), '', 'שקל אינו זקוק להמרה');
+    assertEqual(ilsText(100, 'EUR', null), '', 'בלי שער אין להמציא המרה');
+    assertEqual(ilsText(0, 'EUR', 4), '', 'אפס אינו מקבל הערה');
+    assertEqual(ilsNote(100, 'ILS', 1), null);
+    assertTrue(ilsNote(100, 'EUR', 4).className.includes('ils'), 'לשורת ההמרה אין מחלקה משלה');
+  });
+
+  s.test('"מתוך" בשורת ההמרה בנוי משני מספרים נפרדים, לא ממחרוזת מעורבת', () => {
+    const node = ilsPairNote(100, 500, 'EUR', 4);
+    const nums = node.querySelectorAll('.num');
+    assertEqual(nums.length, 2, 'מחרוזת מעורבת בתוך .num מוצגת בסדר הפוך בעברית');
+    assertTrue(nums[0].textContent.includes('400') && nums[1].textContent.includes('2,000'),
+      [...nums].map(n => n.textContent).join(' | '));
+    assertEqual(ilsPairNote(100, 500, 'ILS', 1), null);
   });
 
   await s.done();
