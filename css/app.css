@@ -635,3 +635,100 @@ body {
   color: var(--color-text-dim);
 }
 .intro-points b { color: var(--color-text); font-weight: 600; }
+
+/* ---- מסך התכנון: סרגל הפקדים, קבוצות וימים ---- */
+
+.plan-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 4px;
+}
+/* הצ׳יפס נגללים, ו"כווץ הכל" מוצמד לקצה כדי שלא ייעלם מחוץ למסך */
+.plan-toolbar-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+}
+.plan-collapse { flex: 0 0 auto; }
+.plan-toolbar-sep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 20px;
+  background: var(--color-hairline);
+}
+
+/* כותרת היעד יושבת מחוץ לקבוצות, ולכן היא מסומנת כדי שלא תיקרא כעוד קבוצה */
+.seg-header { border-inline-start: 3px solid var(--color-accent); }
+
+.day-head { min-height: 40px; }
+.day + .day {
+  margin-block-start: 10px;
+  padding-block-start: 10px;
+  border-block-start: 1px solid var(--color-hairline);
+}
+/* שורות היום נוגעות בקצה הכרטיס, כמו ברשימת ההכנה */
+.day-items { margin-inline: calc(var(--space-card-p) * -1); }
+
+.day-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-block-start: 8px;
+}
+.day-add .field, .day-add .grow { flex: 1; min-width: 0; }
+
+/* פעולה משנית בתוך שורה: טקסט בלבד, בלי משקל של כפתור */
+.link-btn {
+  flex: 0 0 auto;
+  min-height: var(--touch-min);
+  padding: 8px;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* ---- בורר הקטלוג: רשימה אחת עם אינדקס מדורים דביק ---- */
+
+.catalog-index {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-block: 10px;
+  background: var(--color-surface);
+}
+.catalog-index[hidden] { display: none; }
+
+/* הכותרת הראשונה אינה זקוקה לקו הפרדה — אין מעליה מה להפריד */
+.catalog-section:first-child { margin-block-start: 4px; padding-block-start: 0; border-block-start: 0; }
+.catalog-section {
+  margin-block: 18px 4px;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--color-hairline);
+}
+.catalog-section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-head);
+}
+.catalog-topic {
+  margin-block: 12px 2px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-head);
+  color: var(--color-text-mute);
+}
+.catalog-item {
+  width: 100%;
+  justify-content: space-between;
+  margin-block-start: 6px;
+  text-align: start;
+}

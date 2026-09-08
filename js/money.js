@@ -3,6 +3,7 @@ import * as trips from './trips.js';
 import * as it from './itinerary.js';
 import * as expenses from './expenses.js';
 import * as rates from './rates.js';
+import * as budgets from './budgets.js';
 
 export const CASH_IN_WALLET = 'מזומן בארנק';
 export const NO_CATEGORY = 'ללא קטגוריה';
@@ -97,6 +98,74 @@ export async function tripTotals(tripId) {
     unallocated: budget.unallocated,
     remaining: round2(budget.ceiling - total),
     overCeiling: budget.ceiling > 0 && total > budget.ceiling,
+  };
+}
+
+/**
+ * תכנון התקציב: שורה לכל קטגוריה שהוזן לה תקציב, עם מה ששולם בפועל ועם מה
+ * שמתוכנן במסלול. החריגה נמדדת מול השולם בלבד — המתוכנן הוא מידע ולא חיוב.
+ *
+ * "מזומן בארנק" ו"ללא קטגוריה" אינם קטגוריות ולכן אינם מקבלים כאן שורה,
+ * ומכאן שסכום השורות אינו חייב להשתוות לסך ההוצאות של הטיול.
+ */
+export async function budgetByCategory(tripId) {
+  const [trip, cats, rows, items, totals] = await Promise.all([
+    trips.getTrip(tripId),
+    trips.categories(tripId),
+    budgets.list(tripId),
+    db.all(db.STORES.items, tripId),
+    tripTotals(tripId),
+  ]);
+
+  const tripCurrency = (trip?.currency || 'ILS').toUpperCase();
+  const tRate = await tripRateToILS(trip);
+  const spentOf = new Map(totals.byCategory.map(c => [c.id, c.amount]));
+
+  const plannedOf = new Map();
+  for (const i of items) {
+    if (!i.plannedAmount) continue;
+    const key = i.categoryId || 'none';
+    const value = rates.toILS({ amount: i.plannedAmount, rateToILS: i.rateToILS }) / tRate;
+    plannedOf.set(key, round2((plannedOf.get(key) || 0) + value));
+  }
+
+  // תקציב אינו נושא שער קפוא, ולכן הוא מומר לפי השער הנוכחי כשמטבע הטיול השתנה.
+  const rateCache = new Map();
+  const toTrip = async (amount, currency) => {
+    const code = (currency || tripCurrency).toUpperCase();
+    if (code === tripCurrency) return round2(Number(amount) || 0);
+    if (!rateCache.has(code)) rateCache.set(code, (await rates.getRate(code))?.rate ?? 1);
+    return round2(((Number(amount) || 0) * rateCache.get(code)) / tRate);
+  };
+
+  const order = new Map(cats.map((c, i) => [c.id, i]));
+  const out = [];
+  for (const row of rows) {
+    const cat = cats.find(c => c.id === row.categoryId);
+    if (!cat) continue;   // הקטגוריה נמחקה — התקציב שלה אינו תקציב של דבר
+    const budget = await toTrip(row.amount, row.currency);
+    const spent = spentOf.get(cat.id) || 0;
+    out.push({
+      id: cat.id, name: cat.name, color: cat.color, icon: cat.icon,
+      budget, spent,
+      planned: plannedOf.get(cat.id) || 0,
+      remaining: round2(budget - spent),
+      over: budget > 0 && spent > budget,
+    });
+  }
+  out.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+
+  const ceiling = trip?.totalBudget || 0;
+  const budgeted = round2(out.reduce((sum, r) => sum + r.budget, 0));
+  return {
+    currency: tripCurrency,
+    rows: out,
+    budgeted,
+    ceiling,
+    unbudgeted: round2(ceiling - budgeted),
+    over: ceiling > 0 && budgeted > ceiling,
+    overBy: round2(budgeted - ceiling),
+    cashInWallet: totals.cashInWallet,
   };
 }
 

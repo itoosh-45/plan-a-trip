@@ -3,7 +3,7 @@ import * as it from '../itinerary.js';
 import * as prep from '../prep.js';
 import * as catalog from '../catalog.js';
 import * as imported from '../imported.js';
-import { el, card, sheet, toast, confirmDanger, icon, fmtMoney } from '../ui.js';
+import { el, card, sheet, toast, confirmDanger, icon, fmtMoneyHtml } from '../ui.js';
 import { refresh } from '../app.js';
 import { noTripCard } from './no-trip.js';
 
@@ -80,25 +80,6 @@ async function openTaskSheet(tripId, existing, stage, category) {
         } catch (err) { toast(err.message, 'error'); }
       } }),
     ],
-  });
-}
-
-/** הוספה לרשימה: ידנית או מהקטלוג. נפתח מהכפתור שליד כותרת השלב. */
-function openAddSheet(tripId, stage, label) {
-  const s = sheet({
-    title: `הוספה ל${label}`,
-    body: el('div', {}, [
-      el('button', {
-        class: 'btn btn-secondary btn-block', style: 'margin-block-start:8px',
-        html: `${icon('search')}<span>בחירה מהקטלוג</span>`,
-        onClick: () => { s.close(); openCatalogSheet(tripId, stage); },
-      }),
-      el('button', {
-        class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px',
-        html: `${icon('plus')}<span>הוספה ידנית</span>`,
-        onClick: () => { s.close(); openTaskSheet(tripId, null, stage); },
-      }),
-    ]),
   });
 }
 
@@ -217,15 +198,23 @@ function taskRow(tripId, task, segs, currency) {
 
 // ---------- בורר הקטלוג ----------
 
+const matches = (item, needle) =>
+  item.text.toLowerCase().includes(needle) ||
+  (item.topic || '').toLowerCase().includes(needle) ||
+  (item.section || '').toLowerCase().includes(needle) ||
+  (item.group || '').toLowerCase().includes(needle);
+
+/**
+ * הקטלוג כולו ברשימה אחת. אין ניווט בין שלב, מדור ונושא: המדורים הם כותרות
+ * בולטות, הנושאים כותרות קטנות מתחתן, ושורת צ׳יפס דביקה למעלה קופצת לכל
+ * מדור. פריט שכבר ברשימת הטיול אינו מוצג, ומחיקתו מהרשימה מחזירה אותו לכאן.
+ */
 export function openCatalogSheet(tripId, stage) {
   const selected = new Map();
-  const view = { phase: null, section: null, list: null, query: '' };
-  let used = new Set();
-  let lists = [];
-
-  // רק החלק הזה נבנה מחדש. שדה החיפוש וכפתורי ההוספה חיים כל זמן החלון,
-  // ולכן לחיצה על פריט לא מאפסת את הגלילה ולא גונבת את הפוקוס מהחיפוש.
+  const index = el('div', { class: 'catalog-index' });
   const results = el('div');
+  const headOf = new Map();     // מפתח מדור -> כותרת שלו ברשימה, לקפיצה
+  let sections = [];
 
   const addSelected = async () => {
     const items = [...selected.values()];
@@ -239,9 +228,8 @@ export function openCatalogSheet(tripId, stage) {
     refresh();
   };
 
-  // הקטלוג ארוך, ולכן כפתור ההוספה יושב גם בראש הרשימה וגם בתחתיתה.
-  // שניהם קיימים תמיד — כפתור שמופיע רק אחרי הבחירה הראשונה דוחף את כל
-  // הרשימה למטה, וזו קפיצה בדיוק כמו זו שהתיקון הזה בא למנוע.
+  // הרשימה ארוכה, ולכן כפתור ההוספה יושב גם בראשה וגם בתחתיתה. שניהם קיימים
+  // תמיד — כפתור שמופיע רק אחרי הבחירה הראשונה דוחף את כל הרשימה למטה.
   const addButtons = [];
   function addButton() {
     const button = el('button', {
@@ -261,12 +249,13 @@ export function openCatalogSheet(tripId, stage) {
 
   const search = el('input', {
     class: 'field', type: 'search', placeholder: 'חיפוש בקטלוג',
-    onInput: e => { view.query = e.target.value; render(); },
+    onInput: e => renderList(e.target.value),
   });
 
   const body = el('div', {}, [
     addButton(),
     el('div', { class: 'field-row' }, [search]),
+    index,
     results,
   ]);
 
@@ -279,13 +268,11 @@ export function openCatalogSheet(tripId, stage) {
     ],
   });
 
-  // פריט שכבר ברשימה של הטיול הזה אינו מוצג. מחיקתו מהרשימה מחזירה אותו לכאן.
-  const available = rows => rows.filter(r => !used.has(r.id));
-
+  // לחיצה על פריט מעדכנת רק את הפריט שנלחץ. אין בנייה מחדש ואין קפיצת גלילה.
   function catalogRow(item) {
     const mark = el('span', { html: icon(selected.has(item.id) ? 'check' : 'plus') });
     const node = el('button', {
-      class: 'chip wrap', style: 'width:100%; justify-content:space-between; margin-block-start:6px; text-align:start',
+      class: 'chip wrap catalog-item',
       'aria-pressed': String(selected.has(item.id)),
       onClick: () => {
         if (selected.has(item.id)) selected.delete(item.id); else selected.set(item.id, item);
@@ -301,90 +288,100 @@ export function openCatalogSheet(tripId, stage) {
     return node;
   }
 
-  function backRow(onClick, label) {
-    return el('button', {
-      class: 'group-head', style: 'color:var(--color-accent)', onClick,
-    }, [el('span', { html: icon('chevronLeft') }), el('span', { text: label })]);
-  }
-
   function emptyNote(text) {
     return el('div', { class: 'sub', style: 'padding:12px', text });
   }
 
-  async function render() {
-    results.replaceChildren();
-
-    if (view.query.trim()) {
-      const needle = view.query.trim().toLowerCase();
-      const rows = available([
-        ...await catalog.search(view.query),
-        ...lists.flatMap(entry => imported.itemsOf(entry)
-          .filter(item => item.text.toLowerCase().includes(needle))),
-      ]);
-      results.append(el('div', { class: 'sub', text: `${rows.length} תוצאות` }));
-      results.append(...rows.slice(0, 120).map(catalogRow));
-      return;
-    }
-
-    // רשימה מיובאת נפתחת ישר לפריטים: אין לה מדור ואין לה נושא
-    if (view.list) {
-      results.append(backRow(() => { view.list = null; render(); }, view.list.name));
-      const rows = available(imported.itemsOf(view.list));
-      if (!rows.length) results.append(emptyNote('כל הפריטים ברשימה הזו כבר ברשימת ההכנה.'));
-      results.append(...rows.map(catalogRow));
-      return;
-    }
-
-    const allPhases = await catalog.phases();
-    // רשימה בשם חופשי אינה שייכת לשלב, ולכן כל הקטלוג פתוח בפניה
-    const phases = prep.STAGES[stage]
-      ? allPhases.filter(p => prep.STAGE_BY_PHASE[p] === stage)
-      : allPhases;
-
-    if (!view.phase) {
-      results.append(...phases.map(p => el('button', {
-        class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px', text: p,
-        onClick: () => { view.phase = p; render(); },
-      })));
-      // הרשימות שהמשתמש הביא בעצמו, תמיד אחרונות ותמיד מסומנות ככאלה —
-      // גם כשהוא שייך אותן לשלב, כדי שתמיד יהיה ברור מה מקורי ומה שלו.
-      results.append(...lists.map(entry => el('button', {
-        class: 'btn btn-tertiary btn-block',
-        style: 'margin-block-start:8px; display:block; text-align:start',
-        onClick: () => { view.list = entry; render(); },
-      }, [
-        el('div', { class: 'sub', text: 'רשימה מיובאת' }),
-        el('div', { style: 'font-weight:600', text: entry.name }),
-      ])));
-      return;
-    }
-
-    if (!view.section) {
-      results.append(backRow(() => { view.phase = null; render(); }, view.phase));
-      const sections = await catalog.sections(view.phase);
-      results.append(...sections.map(sec => el('button', {
-        class: 'btn btn-tertiary btn-block', style: 'margin-block-start:8px', text: sec,
-        onClick: () => { view.section = sec; render(); },
-      })));
-      return;
-    }
-
-    results.append(backRow(() => { view.section = null; render(); }, view.section));
-    let shown = 0;
-    for (const topic of await catalog.topics(view.phase, view.section)) {
-      const rows = available(await catalog.byTopic(view.phase, view.section, topic));
-      if (!rows.length) continue;
-      shown += rows.length;
-      results.append(el('div', { class: 'card-title', style: 'margin-block-start:12px', text: topic }));
-      results.append(...rows.map(catalogRow));
-    }
-    if (!shown) results.append(emptyNote('כל הפריטים במדור הזה כבר ברשימה.'));
+  function renderIndex() {
+    index.replaceChildren(...sections.map(sec => el('button', {
+      class: 'chip', 'data-section': sec.key, text: sec.title,
+      onClick: () => headOf.get(sec.key)?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
+    })));
   }
 
-  // נשלף פעם אחת: הוא משתנה רק דרך addFromCatalog, שסוגרת את החלון מיד אחריה.
+  /** הצ׳יפ הפעיל הוא המדור האחרון שכותרתו כבר עברה את ראש אזור הגלילה. */
+  function syncIndex() {
+    const top = s.panel.getBoundingClientRect().top + 72;
+    let active = sections[0]?.key;
+    for (const sec of sections) {
+      const head = headOf.get(sec.key);
+      if (head && head.getBoundingClientRect().top <= top) active = sec.key;
+    }
+    for (const chip of index.children) {
+      chip.setAttribute('aria-pressed', String(chip.dataset.section === active));
+    }
+  }
+
+  function renderList(query = '') {
+    const needle = query.trim().toLowerCase();
+    index.hidden = Boolean(needle) || sections.length < 2;
+    headOf.clear();
+    results.replaceChildren();
+
+    if (needle) {
+      const hits = sections
+        .flatMap(sec => sec.topics.flatMap(t => t.items))
+        .filter(item => matches(item, needle));
+      results.append(el('div', { class: 'sub', text: `${hits.length} תוצאות` }));
+      if (!hits.length) results.append(emptyNote('אין פריטים שמתאימים לחיפוש.'));
+      results.append(...hits.slice(0, 200).map(catalogRow));
+      return;
+    }
+
+    if (!sections.length) {
+      results.append(emptyNote('כל הפריטים בקטלוג כבר נמצאים ברשימה.'));
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    for (const sec of sections) {
+      const head = el('div', { class: 'catalog-section' }, [
+        sec.badge ? el('div', { class: 'sub', style: 'margin:0', text: sec.badge }) : null,
+        el('div', { class: 'catalog-section-title', text: sec.title }),
+      ]);
+      headOf.set(sec.key, head);
+      frag.append(head);
+      for (const topic of sec.topics) {
+        if (topic.topic) frag.append(el('div', { class: 'catalog-topic', text: topic.topic }));
+        frag.append(...topic.items.map(catalogRow));
+      }
+    }
+    results.append(frag);
+    renderIndex();
+    syncIndex();
+  }
+
   (async () => {
-    [used, lists] = await Promise.all([prep.usedCatalogIds(tripId), imported.list()]);
-    await render();
+    const [used, lists] = await Promise.all([prep.usedCatalogIds(tripId), imported.list()]);
+    const available = rows => rows.filter(r => !used.has(r.id));
+
+    // רשימה בשם חופשי אינה שייכת לשלב, ולכן כל הקטלוג פתוח בפניה
+    const phases = prep.STAGES[stage]
+      ? (await catalog.phases()).filter(p => prep.STAGE_BY_PHASE[p] === stage)
+      : null;
+
+    const built = (await catalog.outline(phases)).map(sec => ({
+      key: sec.section,
+      title: sec.section,
+      badge: null,
+      topics: sec.topics
+        .map(t => ({ topic: t.topic, items: available(t.items) }))
+        .filter(t => t.items.length),
+    }));
+
+    // הרשימות שהמשתמש הביא בעצמו, תמיד אחרונות ותמיד מסומנות ככאלה
+    const importedSections = lists.map(entry => ({
+      key: `imp-${entry.id}`,
+      title: entry.name,
+      badge: 'רשימה מיובאת',
+      topics: [{ topic: null, items: available(imported.itemsOf(entry)) }].filter(t => t.items.length),
+    }));
+
+    sections = [...built, ...importedSections].filter(sec => sec.topics.length);
+    renderList();
+    s.panel.addEventListener('scroll', () => {
+      if (!index.hidden) requestAnimationFrame(syncIndex);
+    }, { passive: true });
   })();
 }
 
@@ -409,8 +406,12 @@ function stageHeader(stage, label, tasks, isOpen, tripId) {
       el('span', { class: 'sub num', text: `${done}/${tasks.length}` }),
     ]),
     el('button', {
-      class: 'icon-btn', 'aria-label': `הוסף פריט ל${label}`,
-      html: icon('plus'), onClick: () => openAddSheet(tripId, stage, label),
+      class: 'icon-btn', 'aria-label': `הוסף משימה ידנית ל${label}`,
+      html: icon('plus'), onClick: () => openTaskSheet(tripId, null, stage),
+    }),
+    el('button', {
+      class: 'icon-btn', 'aria-label': `הוסף ל${label} מהקטלוג`,
+      html: icon('search'), onClick: () => openCatalogSheet(tripId, stage),
     }),
     isCustom
       ? el('button', {
@@ -510,7 +511,7 @@ export async function mount(host, tripId) {
       }
 
       if (!present.length) {
-        body.push(el('div', { class: 'sub', style: 'padding:12px', text: 'הרשימה ריקה. הוסיפו פריט מהכפתור שלמעלה.' }));
+        body.push(el('div', { class: 'sub', style: 'padding:12px', text: 'הרשימה ריקה. אפשר להוסיף משימה ידנית או לבחור מהקטלוג, משני הכפתורים שלמעלה.' }));
       }
 
       for (const category of present) {

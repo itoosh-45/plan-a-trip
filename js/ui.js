@@ -111,7 +111,7 @@ export function fmtMoneyHtml(amount, currency = 'ILS') {
 export function fmtDate(iso) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-').map(Number);
-  return new Intl.DateTimeFormat('he-IL', { day: 'numeric', month: 'short' })
+  return new Intl.DateTimeFormat('he-IL', { day: 'numeric', month: 'short', timeZone: 'UTC' })
     .format(new Date(Date.UTC(y, m - 1, d)));
 }
 
@@ -119,6 +119,43 @@ export function fmtDateRange(fromIso, toIso) {
   if (!fromIso) return '';
   if (!toIso || fromIso === toIso) return fmtDate(fromIso);
   return `${fmtDate(fromIso)} – ${fmtDate(toIso)}`;
+}
+
+/**
+ * שם היום בעברית. Intl מחזיר כאן בדיוק "יום א׳" עד "יום ו׳" ו"שבת",
+ * ולכן אין טבלת שמות ידנית שאפשר לשכוח לתחזק.
+ */
+const WEEKDAY_FMT = new Intl.DateTimeFormat('he-IL', { weekday: 'short', timeZone: 'UTC' });
+const MONTH_FMT = new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+const atUTC = iso => new Date(`${iso}T00:00:00Z`);
+
+export function fmtWeekday(iso) {
+  return iso ? WEEKDAY_FMT.format(atUTC(iso)) : '';
+}
+
+/** "יום א׳ · 12 בספט׳" — התווית של יום ברשימת התכנון. */
+export function fmtDayLabel(iso) {
+  return iso ? `${fmtWeekday(iso)} · ${fmtDate(iso)}` : '';
+}
+
+export function fmtMonth(iso) {
+  return iso ? MONTH_FMT.format(atUTC(iso)) : '';
+}
+
+/** יום א׳ הוא תחילת השבוע. מחזיר את התאריך של יום א׳ של אותו שבוע. */
+export function startOfWeek(iso) {
+  if (!iso) return '';
+  const d = atUTC(iso);
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return d.toISOString().slice(0, 10);
+}
+
+/** "יום אחד" / "יומיים" / "3 ימים" — עברית תקנית בכותרת קבוצה. */
+export function fmtDays(count) {
+  if (count === 1) return 'יום אחד';
+  if (count === 2) return 'יומיים';
+  return `${count} ימים`;
 }
 
 export function nightsBetween(fromIso, toIso) {

@@ -5,14 +5,14 @@ import * as money from '../money.js';
 import * as rates from '../rates.js';
 import * as cur from '../currencies.js';
 import {
-  el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote,
-  fmtMoney, fmtMoneyHtml, fmtDate, fmtDateRange, nightsBetween,
+  el, card, sheet, toast, confirmDanger, icon, amountField,
+  fmtMoney, fmtMoneyHtml, fmtDate, fmtDateRange, fmtDayLabel, fmtWeekday, fmtMonth, fmtDays,
+  nightsBetween,
 } from '../ui.js';
-import { refresh } from '../app.js';
+import { refresh, holdRefresh, releaseRefresh } from '../app.js';
 import { noTripCard } from './no-trip.js';
 
-let openSegmentId = null;   // null = רשימת היעדים; אחרת תצוגת היעד
-let openDay = null;
+let openSegmentId = null;   // רק בתצוגת "לפי יעדים": היעד שנכנסו אליו
 
 const typeOf = key => it.ITEM_TYPES.find(t => t.key === key) || it.ITEM_TYPES.at(-1);
 
@@ -24,6 +24,55 @@ function dateRange(from, to, { min, max } = {}) {
   const start = el('input', { class: 'field', type: 'date', value: from || '', min, max, 'aria-label': 'מתאריך' });
   const end = el('input', { class: 'field', type: 'date', value: to || '', min, max, 'aria-label': 'עד תאריך' });
   return { node: el('div', { class: 'date-row field-row' }, [start, end]), start, end };
+}
+
+// ---------- העדפות התצוגה ----------
+
+/**
+ * תצוגה, קיבוץ ומה שמקופל — העדפות של מכשיר ולא נתוני טיול, ולכן הן יושבות
+ * ב-localStorage ולא במסד: הן לא נכנסות לגיבוי ולא לייצוא. מצב פרטי חוסם
+ * את האחסון, ואז המסך פשוט נפתח מלא ובברירות המחדל.
+ */
+const GROUPINGS = Object.keys(it.GROUPINGS);
+const prefsKey = tripId => `plan:${tripId}`;
+
+function readPrefs(tripId) {
+  let raw = {};
+  try { raw = JSON.parse(localStorage.getItem(prefsKey(tripId)) || '{}') || {}; } catch { raw = {}; }
+  return {
+    view: raw.view === 'segments' ? 'segments' : 'days',
+    grouping: GROUPINGS.includes(raw.grouping) ? raw.grouping : 'days',
+    collapsed: new Set(Array.isArray(raw.collapsed) ? raw.collapsed : []),
+  };
+}
+
+function savePrefs(tripId, prefs) {
+  try {
+    localStorage.setItem(prefsKey(tripId), JSON.stringify({
+      view: prefs.view, grouping: prefs.grouping, collapsed: [...prefs.collapsed],
+    }));
+  } catch { /* מצב פרטי — ההעדפה פשוט לא נשמרת */ }
+}
+
+/**
+ * מפתח קיפול נושא את התאריך שממנו הקבוצה או היום מתחילים. תאריך שכבר אינו
+ * בטיול (התאריכים שונו) נשמט, אבל מפתח של מצב קיבוץ אחר נשאר וממתין לחזרה.
+ */
+function prunePrefs(tripId, prefs, days) {
+  const valid = new Set(days);
+  const before = prefs.collapsed.size;
+  for (const key of [...prefs.collapsed]) {
+    const [kind, date] = [key.slice(0, 1), key.slice(2)];
+    if ((kind === 'g' || kind === 'd') && !valid.has(date)) prefs.collapsed.delete(key);
+  }
+  if (prefs.collapsed.size !== before) savePrefs(tripId, prefs);
+}
+
+function toggleKey(ctx, key) {
+  const { collapsed } = ctx.prefs;
+  if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
+  savePrefs(ctx.trip.id, ctx.prefs);
+  refresh();
 }
 
 // ---------- יעד ----------
@@ -82,7 +131,21 @@ function openSegmentSheet(trip, existing, prefill = { startDate: '', endDate: ''
         text: 'תאריכים שחורגים מטווח הטיול יציעו להאריך אותו. חפיפה ליעד אחר אינה אפשרית.' }),
     ]),
     actions: [
-      el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
+      existing && existing.kind !== 'general'
+        ? el('button', { class: 'btn btn-danger btn-block', text: 'מחק יעד', onClick: async () => {
+            const ok = await confirmDanger({
+              title: `למחוק את ${existing.city}?`,
+              body: 'הפריטים, ההוצאות והמשימות שלו יעברו למקטע "כללי" ולא יימחקו.',
+              confirmLabel: 'מחק יעד',
+            });
+            if (!ok) return;
+            await it.removeSegment(trip.id, existing.id);
+            openSegmentId = null;
+            toast('היעד נמחק', 'success');
+            s.close();
+            refresh();
+          } })
+        : el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
         try {
           const covering = await ensureTripCovers(trip, range.start.value, range.end.value);
@@ -105,7 +168,13 @@ function openSegmentSheet(trip, existing, prefill = { startDate: '', endDate: ''
 
 // ---------- פריט מסלול ----------
 
-async function openItemSheet(trip, seg, date, existing) {
+/** היעד שאליו שייך פריט נגזר מהתאריך שלו. אין תאריך בתוך יעד — הפריט "כללי". */
+function segmentIdFor(ctx, date) {
+  return it.segmentForDate(ctx.segs, date)?.id ?? ctx.generalId;
+}
+
+async function openItemSheet(ctx, date, existing, bounds = {}) {
+  const { trip } = ctx;
   const cats = await trips.categories(trip.id);
   const currencies = await cur.listActive();
 
@@ -114,7 +183,7 @@ async function openItemSheet(trip, seg, date, existing) {
   const title = el('input', { class: 'field', type: 'text', value: existing?.title || '' });
   const dateF = el('input', {
     class: 'field', type: 'date', value: existing?.date || date,
-    min: seg.startDate || undefined, max: seg.endDate || undefined,
+    min: bounds.min || undefined, max: bounds.max || undefined,
   });
   const time = el('input', { class: 'field', type: 'time', value: existing?.time || '' });
   const place = el('input', { class: 'field', type: 'text', value: existing?.place || '' });
@@ -137,7 +206,7 @@ async function openItemSheet(trip, seg, date, existing) {
       row('מיקום', place), row('הזמנה או קישור', ref), row('קטגוריה', category),
       row('עלות מתוכננת', planned.node), row('הערות', note),
       el('p', { class: 'sub',
-        text: 'זו עלות מתוכננת בלבד. כסף שיצא בפועל נרשם בטאב "הוצאות".' }),
+        text: 'עלות היא רשות. כסף שיצא בפועל נרשם בטאב "הוצאות".' }),
     ]),
     actions: [
       existing
@@ -155,7 +224,7 @@ async function openItemSheet(trip, seg, date, existing) {
           const stamped = existing?.rateToILS ? {} : await rates.stamp(amount.currency);
           await it.saveItem(trip.id, {
             ...existing,
-            segmentId: seg.id,
+            segmentId: segmentIdFor(ctx, dateF.value),
             type: type.value,
             title: title.value,
             date: dateF.value,
@@ -177,146 +246,307 @@ async function openItemSheet(trip, seg, date, existing) {
   });
 }
 
-// ---------- תצוגת יעד יחיד ----------
+// ---------- שורת פריט ביום ----------
 
-async function renderSegment(host, trip, seg) {
-  const [items, tasks] = await Promise.all([it.listItems(trip.id), prep.listTasks(trip.id)]);
-  const mine = items.filter(i => i.segmentId === seg.id);
-  const byDate = it.itemsByDate(mine);
-  const segTasks = tasks.filter(t => t.segmentId === seg.id);
+/**
+ * רשימת היום היא רשימת משימות: כותרת, סימון "בוצע", ופרטים רק אם הוזנו.
+ * סכום מופיע כאן רק כשמישהו טרח להזין אותו בטופס המפורט.
+ */
+function itemRow(ctx, date, item, bounds) {
+  const type = typeOf(item.type);
+  const details = [
+    item.type && item.type !== 'other' ? type.label : null,
+    item.time || null,
+    item.place || null,
+    item.note || null,
+  ].filter(Boolean).join(' · ');
 
-  host.append(el('button', {
-    class: 'group-head card-gap', style: 'color:var(--color-accent)',
-    onClick: () => { openSegmentId = null; refresh(); },
-  }, [el('span', { html: icon('chevronLeft') }), el('span', { text: 'חזרה לכל היעדים' })]));
-
-  host.append(card([
-    el('div', { style: 'display:flex; align-items:flex-start; gap:8px' }, [
-      el('div', { class: 'grow' }, [
-        el('div', { class: 'screen-title',
-          text: seg.country ? `${seg.city}, ${seg.country}` : seg.city }),
-        el('div', { class: 'sub',
-          text: `${fmtDateRange(seg.startDate, seg.endDate)} · ${nightsBetween(seg.startDate, seg.endDate)} לילות` }),
-      ]),
-      el('button', { class: 'icon-btn', 'aria-label': 'ערוך יעד', html: icon('edit'),
-        onClick: () => openSegmentSheet(trip, seg) }),
-    ]),
-    el('div', { class: 'row' }, [
-      el('span', { class: 'grow dim', text: 'הקצאת תקציב' }),
-      el('span', { class: 'num', html: fmtMoneyHtml(seg.allocation || 0, trip.currency) }),
-    ]),
-  ], 'card-gap'));
-
-  for (const day of it.segmentDays(seg)) {
-    const dayItems = byDate.get(day) || [];
-    const isOpen = openDay === day;
-    host.append(card([
-      el('button', {
-        class: 'group-head', 'aria-expanded': String(isOpen),
-        onClick: () => { openDay = isOpen ? null : day; refresh(); },
-      }, [
-        el('span', { html: icon('chevronDown'),
-          style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : 90}deg)` }),
-        el('span', { class: 'grow row-title', text: fmtDate(day) }),
-        el('span', { class: 'sub',
-          text: dayItems.length ? `${dayItems.length} פריטים` : 'אין תכנון' }),
-      ]),
-      ...dayItems.map(i => el('button', {
-        class: 'row', style: 'width:100%; background:none; border:0; text-align:start; cursor:pointer; font:inherit; color:inherit',
-        onClick: () => openItemSheet(trip, seg, day, i),
-      }, [
-        el('span', { class: 'cat-icon', html: icon(typeOf(i.type).icon),
-          style: 'background:var(--color-surface-2); color:var(--color-accent)' }),
-        el('span', { class: 'grow' }, [
-          el('span', { style: 'display:block', text: i.title }),
-          el('span', { class: 'sub' }, [
-            el('span', { text: `${typeOf(i.type).label}${i.time ? ` · ${i.time}` : ''}` }),
-            i.place ? el('span', { text: ` · ${i.place}` }) : null,
-            i.note ? el('span', { text: ` · ${i.note}` }) : null,
-          ]),
-        ]),
-        i.plannedAmount
-          ? el('span', {}, [
-              el('div', { class: 'num', html: fmtMoneyHtml(i.plannedAmount, i.currency || trip.currency) }),
-              ilsNote(i.plannedAmount, i.currency || trip.currency, i.rateToILS),
-            ])
-          : null,
-      ])),
-      isOpen
-        ? el('button', {
-            class: 'btn btn-secondary btn-block', style: 'margin-block-start:8px',
-            html: `${icon('plus')}<span>הוסף פריט ל-${fmtDate(day)}</span>`,
-            onClick: () => openItemSheet(trip, seg, day, null),
-          })
+  return el('div', {
+    class: `task ${item.done ? 'done' : ''}`.trim(), 'data-id': item.id,
+  }, [
+    el('button', {
+      class: 'tick', 'aria-pressed': String(!!item.done),
+      'aria-label': item.done ? `בטל סימון של ${item.title}` : `סמן שבוצע: ${item.title}`,
+      html: icon('check'),
+      onClick: async () => {
+        try { await it.toggleItemDone(ctx.trip.id, item.id); } catch (err) { toast(err.message, 'error'); }
+      },
+    }),
+    el('button', {
+      class: 'title', 'aria-label': `ערוך את ${item.title}`,
+      onClick: () => openItemSheet(ctx, date, item, bounds),
+    }, [
+      el('div', { text: item.title }),
+      details || item.plannedAmount
+        ? el('div', { class: 'sub' }, [
+            details ? el('span', { text: details }) : null,
+            item.plannedAmount
+              ? el('span', { class: 'num',
+                  html: `${details ? ' · ' : ''}${fmtMoneyHtml(item.plannedAmount, item.currency || ctx.trip.currency)}` })
+              : null,
+          ])
         : null,
-    ], 'card-gap'));
+    ]),
+  ]);
+}
+
+/**
+ * ההזנה החופשית. פותחת תיבת טקסט בתוך היום עצמו: Enter שומר ומשאיר את
+ * התיבה פתוחה למשימה הבאה, "סיים" או Esc סוגרים. כל עוד התיבה פתוחה
+ * הרינדור מוחזק — אחרת כל שמירה הייתה בונה את המסך מחדש וגונבת את הפוקוס.
+ */
+function addRow(ctx, date, list, bounds) {
+  const node = el('div', { class: 'day-add' });
+
+  const showButtons = () => node.replaceChildren(
+    el('button', {
+      class: 'btn btn-quiet grow', html: `${icon('plus')}<span>הוסף משימה</span>`,
+      onClick: openBox,
+    }),
+    el('button', {
+      class: 'link-btn', text: 'פריט מפורט',
+      onClick: () => openItemSheet(ctx, date, null, bounds),
+    }),
+  );
+
+  function openBox() {
+    let closed = false;
+    const input = el('input', {
+      class: 'field', type: 'text', enterkeyhint: 'done',
+      placeholder: 'מה עושים ביום הזה?', 'aria-label': `משימה חדשה, ${fmtDayLabel(date)}`,
+    });
+
+    const save = async () => {
+      const title = input.value.trim();
+      if (!title) return;
+      try {
+        const saved = await it.quickAddItem(ctx.trip.id, {
+          date, title, segmentId: segmentIdFor(ctx, date),
+        });
+        list.append(itemRow(ctx, date, saved, bounds));
+        input.value = '';
+        input.focus();
+      } catch (err) { toast(err.message, 'error'); }
+    };
+
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      document.removeEventListener('pointerdown', onOutside, true);
+      releaseRefresh();
+      refresh();
+    };
+
+    const onOutside = event => { if (!node.contains(event.target)) close(); };
+
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); save(); }
+      if (event.key === 'Escape') { event.preventDefault(); close(); }
+    });
+
+    node.replaceChildren(
+      input,
+      el('button', { class: 'btn btn-primary', text: 'הוסף', onClick: save }),
+      el('button', { class: 'btn btn-tertiary', text: 'סיים', onClick: close }),
+    );
+    holdRefresh();
+    document.addEventListener('pointerdown', onOutside, true);
+    input.focus();
   }
 
-  host.append(card([
-    el('div', { class: 'card-title', text: 'צ׳קליסט ליעד' }),
-    segTasks.length
-      ? el('div', {}, segTasks.map(t => el('div', { class: 'row' }, [
+  showButtons();
+  return node;
+}
+
+// ---------- יום, קבוצה, כותרת יעד ----------
+
+const countLabel = n => (n === 0 ? 'אין תכנון' : n === 1 ? 'פריט אחד' : `${n} פריטים`);
+
+function dayBlock(ctx, date, { showSegment = false, bounds = {} } = {}) {
+  const items = ctx.byDate.get(date) || [];
+  const key = `d:${date}`;
+  const open = !ctx.prefs.collapsed.has(key);
+  const seg = it.segmentForDate(ctx.segs, date);
+  const list = el('div', { class: 'day-items' }, open ? items.map(i => itemRow(ctx, date, i, bounds)) : []);
+
+  return el('div', { class: 'day' }, [
+    el('button', {
+      class: 'group-head day-head', 'aria-expanded': String(open),
+      onClick: () => toggleKey(ctx, key),
+    }, [
+      el('span', { html: icon('chevronDown'),
+        style: `color:var(--color-accent); transform:rotate(${open ? 0 : 90}deg)` }),
+      el('span', { class: 'grow' }, [
+        el('div', { class: 'row-title', text: fmtDayLabel(date) }),
+        showSegment && seg ? el('div', { class: 'sub', text: seg.city }) : null,
+      ]),
+      el('span', { class: 'sub', text: countLabel(items.length) }),
+    ]),
+    open ? list : null,
+    open ? addRow(ctx, date, list, bounds) : null,
+  ]);
+}
+
+function groupTitle(group) {
+  if (group.mode === 'weeks') {
+    return group.partial ? `שבוע ${group.index} · ${fmtDays(group.dayCount)}` : `שבוע ${group.index}`;
+  }
+  if (group.mode === 'months') {
+    const name = fmtMonth(group.from);
+    return group.partial ? `${name} · ${fmtDays(group.dayCount)}` : name;
+  }
+  return fmtDayLabel(group.from);
+}
+
+function groupRange(group) {
+  if (group.from === group.to) return fmtDayLabel(group.from);
+  return `${fmtWeekday(group.from)} ${fmtDate(group.from)} – ${fmtWeekday(group.to)} ${fmtDate(group.to)}`;
+}
+
+function groupCard(ctx, group, { showSegment = false, bounds = {} } = {}) {
+  const open = !ctx.prefs.collapsed.has(group.key);
+  const count = group.days.reduce((sum, d) => sum + (ctx.byDate.get(d)?.length || 0), 0);
+  const seg = ctx.segs.find(s => s.id === group.segmentId);
+
+  return card([
+    el('button', {
+      class: 'group-head', 'aria-expanded': String(open),
+      onClick: () => toggleKey(ctx, group.key),
+    }, [
+      el('span', { html: icon('chevronDown'),
+        style: `color:var(--color-accent); transform:rotate(${open ? 0 : 90}deg)` }),
+      el('span', { class: 'grow' }, [
+        el('div', { class: 'card-title', text: groupTitle(group) }),
+        el('div', { class: 'sub', text: groupRange(group) }),
+      ]),
+      el('span', { style: 'text-align:end' }, [
+        showSegment && seg && seg.kind !== 'general'
+          ? el('div', { class: 'sub', text: seg.city })
+          : null,
+        el('div', { class: 'sub', text: countLabel(count) }),
+      ]),
+    ]),
+    open
+      ? el('div', { class: 'day-list' }, group.days.map(d => dayBlock(ctx, d, { showSegment: false, bounds })))
+      : null,
+  ], 'card-gap');
+}
+
+/** כותרת היעד. יושבת מחוץ לקבוצות, ולכן קיפול קבוצה לעולם אינו מסתיר אותה. */
+function segmentHeaderCard(ctx, seg) {
+  const stat = ctx.totals.bySegment.find(x => x.id === seg.id)
+    || { amount: 0, allocation: 0, over: false };
+  const tasks = ctx.tasks.filter(t => t.segmentId === seg.id);
+  const key = `c:${seg.id}`;
+  const openList = !ctx.prefs.collapsed.has(key);
+
+  return card([
+    el('div', { style: 'display:flex; align-items:flex-start; gap:8px' }, [
+      el('button', {
+        class: 'group-head grow', 'aria-label': `ערוך את ${seg.city}`,
+        onClick: () => openSegmentSheet(ctx.trip, seg),
+      }, [
+        el('span', { class: 'grow' }, [
+          el('div', { class: 'row-title',
+            text: seg.country ? `${seg.city}, ${seg.country}` : seg.city }),
+          el('div', { class: 'sub',
+            text: `${fmtDateRange(seg.startDate, seg.endDate)} · ${nightsBetween(seg.startDate, seg.endDate)} לילות` }),
+        ]),
+        el('span', { html: icon('edit'), style: 'color:var(--color-accent)' }),
+      ]),
+    ]),
+    el('div', { class: 'row' }, [
+      el('span', { class: 'grow num',
+        html: `${fmtMoneyHtml(stat.amount, ctx.trip.currency)} מתוך ${fmtMoneyHtml(stat.allocation, ctx.trip.currency)}` }),
+      stat.allocation
+        ? el('span', { class: `pill ${stat.over ? 'over' : 'ok'}`, text: stat.over ? 'חריגה' : 'בתקציב' })
+        : el('span', { class: 'sub', text: 'ללא הקצאה' }),
+    ]),
+    tasks.length
+      ? el('button', {
+          class: 'group-head cat-head', 'aria-expanded': String(openList),
+          onClick: () => toggleKey(ctx, key),
+        }, [
+          el('span', { html: icon('chevronDown'),
+            style: `color:var(--color-accent); transform:rotate(${openList ? 0 : 90}deg)` }),
+          el('span', { class: 'grow', text: `צ׳קליסט היעד (${tasks.filter(t => t.done).length}/${tasks.length})` }),
+        ])
+      : null,
+    tasks.length && openList
+      ? el('div', {}, tasks.map(t => el('div', { class: 'row' }, [
           el('button', {
             class: 'tick', 'aria-pressed': String(!!t.done), 'aria-label': t.title, html: icon('check'),
             style: `--urgency: var(--urgency-${t.urgency || 'normal'})`,
-            onClick: async () => { await prep.toggleDone(trip.id, t.id); refresh(); },
+            onClick: async () => { await prep.toggleDone(ctx.trip.id, t.id); refresh(); },
           }),
           el('span', { class: 'grow', text: t.title }),
           el('span', { class: 'sub', text: prep.URGENCY[t.urgency] || 'רגיל' }),
         ])))
-      : el('div', { class: 'dim', text: 'אין עדיין משימות שמשויכות ליעד הזה.' }),
-    el('div', { class: 'sub', style: 'margin-block-start:8px',
-      text: 'שיוך משימה ליעד נעשה בעריכת המשימה בטאב "הכנה".' }),
-  ], 'card-gap'));
-
-  if (seg.kind !== 'general') {
-    host.append(el('button', {
-      class: 'btn btn-danger btn-block card-gap',
-      html: `${icon('trash')}<span>מחק את היעד</span>`,
-      onClick: async () => {
-        const ok = await confirmDanger({
-          title: `למחוק את ${seg.city}?`,
-          body: 'הפריטים, ההוצאות והמשימות שלו יעברו למקטע "כללי" ולא יימחקו.',
-          confirmLabel: 'מחק יעד',
-        });
-        if (!ok) return;
-        await it.removeSegment(trip.id, seg.id);
-        openSegmentId = null;
-        toast('היעד נמחק', 'success');
-        refresh();
-      },
-    }));
-  }
+      : null,
+  ], 'card-gap seg-header');
 }
 
-// ---------- המסך ----------
+// ---------- סרגל הפקדים ----------
 
-export async function mount(host, tripId) {
-  if (!tripId) {
-    host.append(noTripCard('שחזרו גיבוי קיים או פתחו טיול חדש כדי להתחיל לתכנן.'));
-    return;
-  }
+function toolbar(ctx, collapsibleKeys) {
+  const { trip, prefs } = ctx;
+  const chip = (label, on, onClick) =>
+    el('button', { class: 'chip', 'aria-pressed': String(on), text: label, onClick });
 
-  const trip = await trips.getTrip(tripId);
-  const segs = await it.listSegments(tripId);
+  const setView = view => {
+    prefs.view = view;
+    if (view === 'days') openSegmentId = null;
+    savePrefs(trip.id, prefs);
+    refresh();
+  };
 
-  if (openSegmentId) {
-    const seg = segs.find(s => s.id === openSegmentId);
-    if (seg) { await renderSegment(host, trip, seg); return; }
-    openSegmentId = null;
-  }
+  // "פתח הכל" רק כשהכל באמת מקופל. יום אחד שקופל לא אמור להפוך את הכפתור
+  // לכפתור פתיחה, כי אז צריך שתי לחיצות כדי לקפל את השאר.
+  const allCollapsed = collapsibleKeys.length > 0 && collapsibleKeys.every(k => prefs.collapsed.has(k));
 
-  const totals = await money.tripTotals(tripId);
-  const budget = await trips.budgetSummary(tripId);
+  return el('div', { class: 'card-gap plan-toolbar' }, [
+    el('div', { class: 'plan-toolbar-scroll' }, [
+      chip('לפי ימים', prefs.view === 'days', () => setView('days')),
+      chip('לפי יעדים', prefs.view === 'segments', () => setView('segments')),
+      el('span', { class: 'plan-toolbar-sep' }),
+      ...Object.entries(it.GROUPINGS).map(([key, label]) => chip(label, prefs.grouping === key, () => {
+        prefs.grouping = key;
+        savePrefs(trip.id, prefs);
+        refresh();
+      })),
+    ]),
+    collapsibleKeys.length
+      ? el('button', {
+          class: 'chip plan-collapse', text: allCollapsed ? 'פתח הכל' : 'כווץ הכל',
+          onClick: () => {
+            if (allCollapsed) for (const k of collapsibleKeys) prefs.collapsed.delete(k);
+            else for (const k of collapsibleKeys) prefs.collapsed.add(k);
+            savePrefs(trip.id, prefs);
+            refresh();
+          },
+        })
+      : null,
+  ]);
+}
 
-  host.append(card([
+/** המפתחות ש"כווץ הכל" נוגע בהם: הקבוצות, או הימים כשאין קיבוץ. */
+function collapsibleOf(groups, grouping) {
+  return grouping === 'days'
+    ? groups.map(g => `d:${g.from}`)
+    : groups.map(g => g.key);
+}
+
+// ---------- תקציב הטיול ----------
+
+function tripBudgetCard(trip, budget) {
+  return card([
     el('div', { class: 'card-title', text: 'תקציב הטיול' }),
     el('div', { class: 'row' }, [
       el('span', { class: 'grow dim', text: 'תקרה' }),
       el('span', { class: 'num', html: fmtMoneyHtml(budget.ceiling, trip.currency) }),
     ]),
     el('div', { class: 'row' }, [
-      el('span', { class: 'grow dim', text: 'סך שהוקצה' }),
+      el('span', { class: 'grow dim', text: 'סך שהוקצה ליעדים' }),
       el('span', { class: 'num', html: fmtMoneyHtml(budget.allocated, trip.currency) }),
     ]),
     el('div', { class: 'row' }, [
@@ -328,15 +558,48 @@ export async function mount(host, tripId) {
       ? el('div', { class: 'toast warning', style: 'margin-block-start:12px',
           text: `ההקצאות ליעדים עוברות את התקרה ב-${fmtMoney(-budget.unallocated, trip.currency)}. אפשר לשמור, אבל שווה לבדוק.` })
       : null,
-  ], 'card-gap'));
+  ], 'card-gap');
+}
 
-  for (const seg of segs) {
-    const stat = totals.bySegment.find(x => x.id === seg.id) || { amount: 0, allocation: 0, over: false };
+// ---------- התצוגות ----------
+
+function renderDays(ctx, days) {
+  const groups = it.groupDays(days, ctx.prefs.grouping, ctx.segs);
+  const nodes = [];
+  const seenSegments = new Set();
+
+  for (const group of groups) {
+    const seg = ctx.segs.find(s => s.id === group.segmentId);
+    if (seg && seg.kind !== 'general' && !seenSegments.has(seg.id)) {
+      seenSegments.add(seg.id);
+      nodes.push(segmentHeaderCard(ctx, seg));
+    }
+    nodes.push(ctx.prefs.grouping === 'days'
+      ? card([dayBlock(ctx, group.from, { showSegment: true })], 'card-gap')
+      : groupCard(ctx, group, { showSegment: true }));
+  }
+
+  return { nodes, keys: collapsibleOf(groups, ctx.prefs.grouping) };
+}
+
+function renderSegmentDays(ctx, seg) {
+  const days = it.segmentDays(seg);
+  const bounds = { min: seg.startDate || undefined, max: seg.endDate || undefined };
+  const groups = it.groupDays(days, ctx.prefs.grouping, ctx.segs);
+  const nodes = groups.map(group => (ctx.prefs.grouping === 'days'
+    ? card([dayBlock(ctx, group.from, { bounds })], 'card-gap')
+    : groupCard(ctx, group, { bounds })));
+  return { nodes, keys: collapsibleOf(groups, ctx.prefs.grouping) };
+}
+
+function renderSegmentList(ctx) {
+  const nodes = ctx.segs.map(seg => {
+    const stat = ctx.totals.bySegment.find(x => x.id === seg.id) || { amount: 0, allocation: 0, over: false };
     const pct = stat.allocation ? Math.min(Math.round((stat.amount / stat.allocation) * 100), 100) : 0;
-    host.append(card([
+    return card([
       el('button', {
         class: 'group-head',
-        onClick: () => { openSegmentId = seg.id; openDay = null; refresh(); },
+        onClick: () => { openSegmentId = seg.id; refresh(); },
       }, [
         el('span', { class: 'grow' }, [
           el('div', { class: 'row-title', text: seg.city }),
@@ -348,7 +611,8 @@ export async function mount(host, tripId) {
         el('span', { html: icon('chevronLeft'), style: 'color:var(--color-accent)' }),
       ]),
       el('div', { class: 'row' }, [
-        el('span', { class: 'grow num', html: `${fmtMoneyHtml(stat.amount, trip.currency)} מתוך ${fmtMoneyHtml(stat.allocation, trip.currency)}` }),
+        el('span', { class: 'grow num',
+          html: `${fmtMoneyHtml(stat.amount, ctx.trip.currency)} מתוך ${fmtMoneyHtml(stat.allocation, ctx.trip.currency)}` }),
         stat.allocation
           ? el('span', { class: `pill ${stat.over ? 'over' : 'ok'}`, text: stat.over ? 'חריגה' : 'בתקציב' })
           : el('span', { class: 'sub', text: 'ללא הקצאה' }),
@@ -356,12 +620,75 @@ export async function mount(host, tripId) {
       el('div', { class: 'bar' }, [
         el('span', { class: stat.over ? 'over' : '', style: `width:${stat.over ? 100 : pct}%` }),
       ]),
+    ], 'card-gap');
+  });
+  return { nodes, keys: [] };
+}
+
+// ---------- המסך ----------
+
+export async function mount(host, tripId) {
+  if (!tripId) {
+    host.append(noTripCard('שחזרו גיבוי קיים או פתחו טיול חדש כדי להתחיל לתכנן.'));
+    return;
+  }
+
+  const [trip, segs, items, tasks, totals, budget] = await Promise.all([
+    trips.getTrip(tripId),
+    it.listSegments(tripId),
+    it.listItems(tripId),
+    prep.listTasks(tripId),
+    money.tripTotals(tripId),
+    trips.budgetSummary(tripId),
+  ]);
+
+  const prefs = readPrefs(tripId);
+  const days = it.tripDays(trip, segs);
+  prunePrefs(tripId, prefs, days);
+
+  const ctx = {
+    trip, segs, prefs, tasks, totals,
+    byDate: it.itemsByDate(items),
+    generalId: segs.find(s => s.kind === 'general')?.id ?? null,
+  };
+
+  const openSeg = prefs.view === 'segments' && openSegmentId
+    ? segs.find(s => s.id === openSegmentId)
+    : null;
+  if (prefs.view === 'segments' && openSegmentId && !openSeg) openSegmentId = null;
+
+  let body;
+  if (openSeg) body = renderSegmentDays(ctx, openSeg);
+  else if (prefs.view === 'segments') body = renderSegmentList(ctx);
+  else body = renderDays(ctx, days);
+
+  host.append(toolbar(ctx, body.keys));
+
+  if (openSeg) {
+    host.append(el('button', {
+      class: 'group-head card-gap', style: 'color:var(--color-accent)',
+      onClick: () => { openSegmentId = null; refresh(); },
+    }, [el('span', { html: icon('chevronLeft') }), el('span', { text: 'חזרה לכל היעדים' })]));
+    host.append(segmentHeaderCard(ctx, openSeg));
+  } else {
+    host.append(tripBudgetCard(trip, budget));
+  }
+
+  if (!openSeg && prefs.view === 'days' && !days.length) {
+    host.append(card([
+      el('div', { class: 'empty-title', text: 'עדיין אין תאריכים לטיול' }),
+      el('div', { class: 'dim',
+        text: 'אפשר להוסיף יעד עם תאריכים, או להגדיר תאריכי טיול בטאב "הגדרות".' }),
     ], 'card-gap'));
   }
 
-  host.append(el('button', {
-    class: 'btn btn-primary btn-hero card-gap',
-    html: `${icon('plus')}<span>יעד חדש</span>`,
-    onClick: () => openSegmentSheet(trip, null, it.defaultRange(trip, segs)),
-  }));
+  host.append(...body.nodes);
+
+  if (!openSeg) {
+    host.append(el('button', {
+      class: 'btn btn-primary btn-hero card-gap',
+      html: `${icon('plus')}<span>יעד חדש</span>`,
+      onClick: () => openSegmentSheet(trip, null, it.defaultRange(trip, segs)),
+    }));
+  }
 }

@@ -26,7 +26,8 @@ export const CHUNK = 40000;
 
 const EXPENSE_HEAD = ['תאריך', 'טיול', 'יעד', 'קטגוריה', 'פירוט', 'סוג', 'סכום', 'מטבע', 'בשקלים'];
 const SEGMENT_HEAD = ['טיול', 'יעד', 'מתאריך', 'עד תאריך', 'לילות', 'הקצאת תקציב', 'מטבע'];
-const ITEM_HEAD    = ['טיול', 'יעד', 'תאריך', 'שעה', 'סוג', 'כותרת', 'סכום מתוכנן', 'מטבע'];
+const ITEM_HEAD    = ['טיול', 'יעד', 'תאריך', 'שעה', 'סוג', 'כותרת', 'סכום מתוכנן', 'מטבע', 'בוצע'];
+const BUDGET_HEAD  = ['טיול', 'קטגוריה', 'תקציב', 'מטבע'];
 
 const ITEM_LABEL = Object.fromEntries(it.ITEM_TYPES.map(t => [t.key, t.label]));
 
@@ -60,8 +61,15 @@ export function itemRows(trip, segs, items) {
   return items.map(i => [
     trip.name, seg(i.segmentId), i.date, i.time || '',
     ITEM_LABEL[i.type] || i.type || '', i.title,
-    i.plannedAmount ?? '', i.currency || trip.currency,
+    i.plannedAmount ?? '', i.currency || trip.currency, i.done ? 'כן' : '',
   ]);
+}
+
+export function budgetRows(trip, cats, rows) {
+  const cat = id => cats.find(c => c.id === id)?.name || '';
+  return rows
+    .filter(b => cat(b.categoryId))
+    .map(b => [trip.name, cat(b.categoryId), b.amount, b.currency || trip.currency]);
 }
 
 async function buildSheets() {
@@ -69,23 +77,27 @@ async function buildSheets() {
   const expense = [EXPENSE_HEAD];
   const segment = [SEGMENT_HEAD];
   const item = [];
+  const budget = [BUDGET_HEAD];
 
   for (const trip of all) {
-    const [segs, cats, rows, items] = await Promise.all([
+    const [segs, cats, rows, items, plans] = await Promise.all([
       it.listSegments(trip.id),
       trips.categories(trip.id),
       expenses.list(trip.id),
       db.all(db.STORES.items, trip.id),
+      db.all(db.STORES.budgets, trip.id),
     ]);
     expense.push(...expenseRows(trip, segs, cats, rows));
     segment.push(...segmentRows(trip, segs));
     item.push(...itemRows(trip, segs, items));
+    budget.push(...budgetRows(trip, cats, plans));
   }
 
   // שני בלוקים בלשונית אחת, מופרדים בשורה ריקה: היעדים ואז פריטי המסלול.
   return {
     'הוצאות': expense,
     'יעדים ומסלול': [...segment, [], ITEM_HEAD, ...item],
+    'תקציב': budget,
   };
 }
 

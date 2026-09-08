@@ -77,6 +77,28 @@ async function buildTopbar() {
 // בלי "רק הרינדור האחרון קובע", שני רינדורים חופפים היו מכפילים את התוכן על המסך.
 let renderId = 0;
 
+/**
+ * החזקת הרינדור. הזנה מהירה של משימה שומרת רשומה אחרי רשומה, וכל שמירה
+ * משדרת data:changed — רינדור מחדש היה סוגר את תיבת הטקסט ומאבד את הפוקוס
+ * באמצע ההקלדה. מי שמחזיק אחראי לשחרר, והשחרור מריץ רינדור אחד אם היה צורך.
+ */
+let held = 0;
+let missed = false;
+
+export function holdRefresh() { held += 1; }
+
+export function releaseRefresh() {
+  held = Math.max(0, held - 1);
+  if (held || !missed) return;
+  missed = false;
+  refresh();
+}
+
+function onDataChanged() {
+  if (held) { missed = true; return; }
+  refresh();
+}
+
 export async function refresh() {
   const myId = ++renderId;
   const topbarNode = await buildTopbar();
@@ -97,7 +119,11 @@ export async function refresh() {
 
   if (myId !== renderId) return; // התבטל על ידי רינדור מאוחר יותר
   document.getElementById('topbar').replaceChildren(topbarNode);
-  document.getElementById('screen').replaceChildren(...frag.childNodes);
+  // מיקום הגלילה נשמר: קיפול יום באמצע רשימה ארוכה לא אמור להחזיר לראש המסך.
+  const screen = document.getElementById('screen');
+  const scroll = screen.scrollTop;
+  screen.replaceChildren(...frag.childNodes);
+  if (scroll) screen.scrollTop = scroll;
 }
 
 function buildNav() {
@@ -155,7 +181,7 @@ export async function boot() {
   await migrate.recolorCategories();
   await migrate.dropLegacyGearTasks();
   if (!report.skipped && report.trips) toast('הנתונים הקיימים הותאמו למבנה החדש', 'success');
-  document.addEventListener('data:changed', () => refresh());
+  document.addEventListener('data:changed', onDataChanged);
   window.addEventListener('online',  () => { toast('חזרנו לרשת', 'success'); autoRefreshRates(); });
   window.addEventListener('offline', () => toast('אין רשת. האפליקציה ממשיכה לעבוד.', 'warning'));
   await refresh();

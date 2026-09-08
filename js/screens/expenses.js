@@ -2,6 +2,7 @@ import * as trips from '../trips.js';
 import * as it from '../itinerary.js';
 import * as expenses from '../expenses.js';
 import * as money from '../money.js';
+import * as budgets from '../budgets.js';
 import * as cur from '../currencies.js';
 import {
   el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote, fmtMoney, fmtMoneyHtml, fmtDate,
@@ -165,6 +166,212 @@ function walletCard(trip, balances, cashRows, cats, segs) {
   return card(body, 'card-gap');
 }
 
+// ---------- תכנון תקציב לפי קטגוריה ----------
+
+/**
+ * הזנת תקציב לקטגוריה. סך התקציבים אינו רשאי לעבור בשקט את תקציב הטיול:
+ * חריגה שואלת אם להגדיל אותו, ואם מסרבים — התקציב נשמר בכל זאת ומסומן.
+ */
+async function openBudgetSheet(trip, summary, row) {
+  const amount = el('input', {
+    class: 'field', type: 'number', inputmode: 'decimal', step: '1',
+    value: row.budget || '', 'aria-label': 'סכום התקציב',
+  });
+
+  const s = sheet({
+    title: `תקציב ל${row.name}`,
+    body: el('div', {}, [
+      el('div', { class: 'field-row' }, [
+        el('label', { class: 'field-label', text: `סכום (${cur.symbol(trip.currency)})` }),
+        amount,
+      ]),
+      el('p', { class: 'sub',
+        text: `שולם עד כה ${fmtMoney(row.spent || 0, trip.currency)}${
+          row.planned ? ` · מתוכנן במסלול ${fmtMoney(row.planned, trip.currency)}` : ''}` }),
+      el('p', { class: 'sub', text: 'סכום ריק או אפס מסיר את התקציב, והקטגוריה נשארת.' }),
+    ]),
+    actions: [
+      row.budget > 0 && row.id
+        ? el('button', { class: 'btn btn-danger btn-block', text: 'הסר קטגוריה', onClick: async () => {
+            const ok = await confirmDanger({
+              title: `להסיר את ${row.name} מהטיול?`,
+              body: 'הקטגוריה תימחק מהטיול הזה יחד עם התקציב שלה. אפשר להחזיר אותה מ"הוסף תקציב".',
+              confirmLabel: 'הסר',
+            });
+            if (!ok) return;
+            try {
+              await trips.removeCategory(trip.id, row.id);
+              toast('הקטגוריה הוסרה', 'success');
+              s.close();
+              refresh();
+            } catch (err) { toast(err.message, 'error'); }
+          } })
+        : el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
+      el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
+        try {
+          const value = amount.value === '' ? 0 : Number(amount.value);
+          const others = (summary.budgeted || 0) - (row.budget || 0);
+          const projected = Math.round((others + value) * 100) / 100;
+
+          await budgets.setBudget(trip.id, row.id, value, trip.currency);
+
+          if (summary.ceiling > 0 && projected > summary.ceiling) {
+            const raise = await confirmDanger({
+              title: 'סך התקציבים עובר את תקציב הטיול',
+              body: `סך התקציבים לקטגוריות הוא ${fmtMoney(projected, trip.currency)}, ותקציב הטיול הוא `
+                + `${fmtMoney(summary.ceiling, trip.currency)}. להגדיל את תקציב הטיול ל-${fmtMoney(projected, trip.currency)}?`,
+              confirmLabel: 'הגדל תקציב',
+              confirmClass: 'btn-primary',
+            });
+            if (raise) await trips.updateTrip({ ...trip, totalBudget: projected });
+            else toast('התקציב נשמר, וסך התקציבים עובר את תקציב הטיול', 'warning');
+          } else {
+            toast('התקציב נשמר', 'success');
+          }
+          s.close();
+          refresh();
+        } catch (err) { toast(err.message, 'error'); }
+      } }),
+    ],
+  });
+}
+
+/** בחירת קטגוריה לתקציב חדש: קיימות, דיפולט שהוסרו, או קטגוריה בשם חופשי. */
+async function openAddBudgetSheet(trip, summary) {
+  const taken = new Set(summary.rows.map(r => r.id));
+  const [cats, missing] = await Promise.all([
+    trips.categories(trip.id),
+    trips.missingDefaultCategories(trip.id),
+  ]);
+  const free = cats.filter(c => !taken.has(c.id));
+  const name = el('input', { class: 'field', type: 'text', placeholder: 'למשל: ביטוח' });
+
+  const pick = row => { s.close(); openBudgetSheet(trip, summary, row); };
+
+  const s = sheet({
+    title: 'הוספת תקציב',
+    body: el('div', {}, [
+      free.length
+        ? el('div', {}, free.map(c => el('button', {
+            class: 'row', style: 'width:100%; background:none; border:0; text-align:start; cursor:pointer; font:inherit; color:inherit',
+            onClick: () => pick({ id: c.id, name: c.name, budget: 0, spent: 0, planned: 0 }),
+          }, [
+            el('span', { class: 'cat-icon', html: icon(c.icon || 'other'),
+              style: `background:color-mix(in srgb, ${c.color} 14%, transparent); color:${c.color}` }),
+            el('span', { class: 'grow', text: c.name }),
+            el('span', { html: icon('plus'), style: 'color:var(--color-accent)' }),
+          ])))
+        : el('div', { class: 'sub', text: 'לכל הקטגוריות בטיול כבר יש תקציב.' }),
+
+      missing.length
+        ? el('div', {}, [
+            el('div', { class: 'cat-head', style: 'display:flex', text: 'קטגוריות שהוסרו' }),
+            ...missing.map(d => el('button', {
+              class: 'row', style: 'width:100%; background:none; border:0; text-align:start; cursor:pointer; font:inherit; color:inherit',
+              onClick: async () => {
+                try {
+                  const restored = await trips.restoreDefaultCategory(trip.id, d.key);
+                  toast(`${d.name} הוחזרה`, 'success');
+                  pick({ id: restored.id, name: restored.name, budget: 0, spent: 0, planned: 0 });
+                } catch (err) { toast(err.message, 'error'); }
+              },
+            }, [
+              el('span', { class: 'cat-icon', html: icon(d.icon),
+                style: `background:color-mix(in srgb, ${d.color} 14%, transparent); color:${d.color}` }),
+              el('span', { class: 'grow', text: d.name }),
+              el('span', { class: 'sub', text: 'החזר' }),
+            ])),
+          ])
+        : null,
+
+      el('div', { class: 'cat-head', style: 'display:flex', text: 'קטגוריה חדשה' }),
+      el('div', { style: 'display:flex; gap:8px' }, [
+        name,
+        el('button', { class: 'btn btn-secondary', text: 'צור', onClick: async () => {
+          try {
+            const created = await trips.addCategory(trip.id, name.value);
+            toast('הקטגוריה נוצרה', 'success');
+            pick({ id: created.id, name: created.name, budget: 0, spent: 0, planned: 0 });
+          } catch (err) { toast(err.message, 'error'); }
+        } }),
+      ]),
+    ]),
+    actions: [
+      el('button', { class: 'btn btn-tertiary btn-block', text: 'סגור', onClick: () => s.close() }),
+    ],
+  });
+}
+
+function budgetCard(trip, summary) {
+  const c = trip.currency;
+  const pct = summary.ceiling
+    ? Math.min(Math.round((summary.budgeted / summary.ceiling) * 100), 100)
+    : 0;
+
+  const body = [
+    el('div', { style: 'display:flex; align-items:baseline; gap:8px' }, [
+      el('span', { class: 'grow card-title', style: 'margin:0', text: 'תכנון תקציב' }),
+      el('span', { class: 'sub num',
+        html: summary.ceiling
+          ? `${fmtMoneyHtml(summary.budgeted, c)} מתוך ${fmtMoneyHtml(summary.ceiling, c)}`
+          : fmtMoneyHtml(summary.budgeted, c) }),
+    ]),
+    summary.ceiling
+      ? el('div', { class: 'bar', style: 'margin-block-start:8px' }, [
+          el('span', { class: summary.over ? 'over' : '', style: `width:${summary.over ? 100 : pct}%` }),
+        ])
+      : null,
+    summary.over
+      ? el('div', { class: 'toast warning', style: 'margin-block-start:12px',
+          text: `סך התקציבים עובר את תקציב הטיול ב-${fmtMoney(summary.overBy, c)}.` })
+      : null,
+  ];
+
+  for (const r of summary.rows) {
+    const rowPct = r.budget ? Math.min(Math.round((r.spent / r.budget) * 100), 100) : 0;
+    body.push(el('div', { style: 'padding-block-start:10px' }, [
+      el('button', {
+        class: 'row', style: 'width:100%; background:none; border:0; text-align:start; cursor:pointer; font:inherit; color:inherit',
+        onClick: () => openBudgetSheet(trip, summary, r),
+      }, [
+        el('span', { class: 'cat-icon', html: icon(r.icon || 'other'),
+          style: `background:color-mix(in srgb, ${r.color} 14%, transparent); color:${r.color}` }),
+        el('span', { class: 'grow' }, [
+          el('span', { style: 'display:block', text: r.name }),
+          el('span', { class: 'sub', html: `שולם ${fmtMoneyHtml(r.spent, c)}${
+            r.planned ? ` · מתוכנן במסלול ${fmtMoneyHtml(r.planned, c)}` : ''}` }),
+        ]),
+        el('span', { style: 'text-align:end' }, [
+          el('div', { class: 'num money', html: fmtMoneyHtml(r.budget, c) }),
+          el('div', { class: `pill ${r.over ? 'over' : 'ok'}`,
+            text: r.over ? `חריגה של ${fmtMoney(-r.remaining, c)}` : `נותרו ${fmtMoney(r.remaining, c)}` }),
+        ]),
+      ]),
+      el('div', { class: 'bar' }, [
+        el('span', { class: r.over ? 'over' : '', style: `width:${r.over ? 100 : rowPct}%` }),
+      ]),
+    ]));
+  }
+
+  if (!summary.rows.length) {
+    body.push(el('div', { class: 'sub', style: 'padding-block:10px',
+      text: 'עדיין לא תוכנן תקציב. אפשר להזין תקציב לכל קטגוריה ולעקוב מולו לאורך הטיול.' }));
+  }
+
+  body.push(el('button', {
+    class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
+    html: `${icon('plus')}<span>הוסף תקציב</span>`,
+    onClick: () => openAddBudgetSheet(trip, summary),
+  }));
+
+  if (summary.cashInWallet) {
+    body.push(el('div', { class: 'sub', style: 'margin-block-start:8px',
+      text: 'מזומן שנמשך ועדיין לא הוצא אינו משויך לקטגוריה, ולכן הוא אינו נספר בשורות שלמעלה.' }));
+  }
+
+  return card(body, 'card-gap');
+}
+
 // ---------- המסך ----------
 
 export async function mount(host, tripId) {
@@ -173,16 +380,18 @@ export async function mount(host, tripId) {
     return;
   }
 
-  const [trip, cats, segs, rows, totals] = await Promise.all([
+  const [trip, cats, segs, rows, totals, budgetSummary] = await Promise.all([
     trips.getTrip(tripId),
     trips.categories(tripId),
     it.listSegments(tripId),
     expenses.list(tripId),
     money.tripTotals(tripId),
+    money.budgetByCategory(tripId),
   ]);
 
   const cashRows = rows.filter(r => r.kind === 'cashSpend');
   host.append(walletCard(trip, totals.balances, cashRows, cats, segs));
+  host.append(budgetCard(trip, budgetSummary));
 
   host.append(card([
     el('div', { style: 'display:flex; align-items:baseline; justify-content:space-between' }, [

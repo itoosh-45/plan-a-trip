@@ -100,7 +100,13 @@ export async function budgetSummary(tripId) {
   ]);
   const ceiling = trip?.totalBudget || 0;
   const allocated = round2(segs.reduce((sum, s) => sum + (Number(s.allocation) || 0), 0));
-  return { ceiling, allocated, unallocated: round2(ceiling - allocated), over: allocated > ceiling };
+  // תקרה 0 פירושה "לא הוגדר תקציב לטיול", ולא "אסור להוציא שקל".
+  return {
+    ceiling,
+    allocated,
+    unallocated: round2(ceiling - allocated),
+    over: ceiling > 0 && allocated > ceiling,
+  };
 }
 
 export async function categories(tripId) {
@@ -115,6 +121,38 @@ export async function upsertCategory(tripId, { id, name, color, icon }) {
   return db.put(db.STORES.categories, { id, tripId, name: clean, color, icon: icon || 'other' });
 }
 
+/** קטגוריות הדיפולט שאינן קיימות בטיול. אלה שאפשר להחזיר בלחיצה. */
+export async function missingDefaultCategories(tripId) {
+  const cats = await categories(tripId);
+  return DEFAULT_CATEGORIES.filter(d =>
+    !cats.some(c => c.key === d.key || c.name === d.name));
+}
+
+/** מחזיר קטגוריית דיפולט שהוסרה, עם השם, הצבע והסמל המקוריים שלה. */
+export async function restoreDefaultCategory(tripId, key) {
+  const def = DEFAULT_CATEGORIES.find(d => d.key === key);
+  if (!def) throw new Error('אין קטגוריית ברירת מחדל בשם הזה');
+  const cats = await categories(tripId);
+  if (cats.some(c => c.key === def.key || c.name === def.name)) {
+    throw new Error('הקטגוריה כבר קיימת בטיול');
+  }
+  return db.put(db.STORES.categories, { ...def, tripId });
+}
+
+/**
+ * קטגוריה חדשה בשם חופשי. הצבע נלקח מהפלטה הקיימת — הגוון הראשון שעדיין
+ * לא בשימוש — כדי שגרף העוגה יישאר קריא בלי שהמשתמש יבחר צבע.
+ */
+export async function addCategory(tripId, name) {
+  const clean = (name || '').trim();
+  if (!clean) throw new Error('לקטגוריה חייב להיות שם');
+  const cats = await categories(tripId);
+  if (cats.some(c => c.name === clean)) throw new Error('כבר קיימת קטגוריה בשם הזה');
+  const used = new Set(cats.map(c => c.color));
+  const color = DEFAULT_CATEGORIES.map(d => d.color).find(c => !used.has(c)) || '#8B95A1';
+  return upsertCategory(tripId, { name: clean, color, icon: 'other' });
+}
+
 export async function removeCategory(tripId, categoryId) {
   const [items, expenses, tasks] = await Promise.all([
     db.all(db.STORES.items, tripId),
@@ -123,5 +161,10 @@ export async function removeCategory(tripId, categoryId) {
   ]);
   const used = [...items, ...expenses, ...tasks].filter(r => r.categoryId === categoryId).length;
   if (used) throw new Error(`לא ניתן למחוק — ${used} רשומות משויכות לקטגוריה הזו`);
+
+  // תקציב מתוכנן לקטגוריה שנמחקה אינו מתוכנן של כלום, ולכן יורד איתה.
+  const budgets = (await db.all(db.STORES.budgets, tripId)).filter(b => b.categoryId === categoryId);
+  for (const b of budgets) await db.remove(db.STORES.budgets, b.id);
+
   await db.remove(db.STORES.categories, categoryId);
 }

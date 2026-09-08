@@ -3,6 +3,7 @@ import * as db from '../js/db.js';
 import * as trips from '../js/trips.js';
 import * as it from '../js/itinerary.js';
 import * as excel from '../js/excel.js';
+import * as budgets from '../js/budgets.js';
 
 async function tripWithData() {
   await db.wipe();
@@ -142,6 +143,57 @@ export default async function () {
     assertEqual(res.ok, true, JSON.stringify(res.errors));
     assertEqual(res.preview.expenses, 501);
     assertTrue(ms < 5000, `לקח ${Math.round(ms)}ms`);
+  });
+
+  s.test('תקציבי קטגוריות וסימון "בוצע" שורדים סבב ייצוא-ייבוא', async () => {
+    const { trip, cats, seg } = await tripWithData();
+    await budgets.setBudget(trip.id, cats[0].id, 1200, 'JPY');
+    await budgets.setBudget(trip.id, cats[2].id, 800, 'JPY');
+    const done = await it.saveItem(trip.id, {
+      segmentId: seg.id, type: 'other', title: 'כבר עשינו', date: '2026-10-03', done: true,
+    });
+
+    const parsed = await excel.parse(await excel.build(trip.id));
+    assertEqual(parsed.ok, true, JSON.stringify(parsed.errors));
+    assertEqual(parsed.preview.budgets, 2);
+    await excel.apply(trip.id, parsed);
+
+    const after = await db.all(db.STORES.budgets, trip.id);
+    assertEqual(
+      after.map(b => [b.categoryId, b.amount]).sort(),
+      [[cats[0].id, 1200], [cats[2].id, 800]].sort(),
+    );
+    const restored = (await it.listItems(trip.id)).find(i => i.title === done.title);
+    assertEqual(restored.done, true, 'סימון "בוצע" לא שרד את הייבוא');
+  });
+
+  s.test('קובץ מהפורמט הקודם (תקציב בלי עמודות הקטגוריה) עדיין נטען', async () => {
+    const { trip } = await tripWithData();
+    const XLSX = window.XLSX;
+    const wb = XLSX.read(await (await excel.build(trip.id)).arrayBuffer(), { type: 'array' });
+    wb.Sheets['תקציב'] = XLSX.utils.aoa_to_sheet([['יעד', 'הקצאה'], ['טוקיו', 2000]]);
+    const old = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]);
+
+    const res = await excel.parse(old);
+    assertEqual(res.ok, true, JSON.stringify(res.errors));
+    assertEqual(res.preview.budgets, 0);
+  });
+
+  s.test('תקציב של קטגוריה שאינה קיימת בטיול נשמט בשקט', async () => {
+    const { trip } = await tripWithData();
+    const XLSX = window.XLSX;
+    const wb = XLSX.read(await (await excel.build(trip.id)).arrayBuffer(), { type: 'array' });
+    wb.Sheets['תקציב'] = XLSX.utils.aoa_to_sheet([
+      ['יעד', 'הקצאה', 'קטגוריה', 'תקציב'],
+      ['טוקיו', 2000, 'קטגוריה שאינה קיימת', 900],
+    ]);
+    const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]);
+
+    const parsed = await excel.parse(blob);
+    assertEqual(parsed.ok, true, JSON.stringify(parsed.errors));
+    const res = await excel.apply(trip.id, parsed);
+    assertEqual(res.counts.budgets, 0);
+    assertEqual(await db.all(db.STORES.budgets, trip.id), []);
   });
 
   await s.done();

@@ -150,5 +150,100 @@ export default async function () {
     assertEqual(it.rangeOverflow({ startDate: null, endDate: null }, '2026-10-01', '2026-10-05'), null);
   });
 
+  // ---- רשימת הימים, הקיבוץ וההזנה המהירה ----
+
+  s.test('tripDays מכסה גם יעד שחורג מטווח הטיול', () => {
+    const trip = { startDate: '2026-09-06', endDate: '2026-09-20' };
+    const segs = [{ kind: 'place', startDate: '2026-09-18', endDate: '2026-09-23' }];
+    const days = it.tripDays(trip, segs);
+    assertEqual([days[0], days.at(-1)], ['2026-09-06', '2026-09-23']);
+    assertEqual(days.length, 18);
+  });
+
+  s.test('tripDays על טיול בלי תאריכים מחזיר רשימה ריקה', () => {
+    assertEqual(it.tripDays({ startDate: null, endDate: null }, []), []);
+  });
+
+  // 6 בספטמבר 2026 הוא יום א׳, ו-26 בו הוא שבת — שלושה שבועות מלאים בדיוק.
+  const SEGS = [
+    { id: 'paris', kind: 'place', city: 'פריז', startDate: '2026-09-06', endDate: '2026-09-15' },
+    { id: 'lyon', kind: 'place', city: 'ליון', startDate: '2026-09-16', endDate: '2026-09-24' },
+    { id: 'gen', kind: 'general', city: 'כללי', startDate: null, endDate: null },
+  ];
+  const TRIP_DAYS = it.tripDays({ startDate: '2026-09-06', endDate: '2026-09-26' }, SEGS);
+
+  s.test('מצב "ימים" מחזיר קבוצה לכל יום, לפי הסדר', () => {
+    const groups = it.groupDays(TRIP_DAYS, 'days', SEGS);
+    assertEqual(groups.length, TRIP_DAYS.length);
+    assertEqual(groups[0].days, ['2026-09-06']);
+    assertEqual(groups[0].key, 'g:2026-09-06');
+  });
+
+  s.test('שבוע מלא תחת יעד אחד הוא קבוצה אחת שאינה חלקית', () => {
+    const [first] = it.groupDays(TRIP_DAYS, 'weeks', SEGS);
+    assertEqual([first.from, first.to], ['2026-09-06', '2026-09-12']);
+    assertEqual([first.dayCount, first.partial, first.index], [7, false, 1]);
+    assertEqual(first.segmentId, 'paris');
+  });
+
+  s.test('יעד שנגמר באמצע שבוע מקבל קבוצה משלו, והבא אחריו קבוצה נפרדת', () => {
+    const groups = it.groupDays(TRIP_DAYS, 'weeks', SEGS);
+    const [, tail, next] = groups;
+    assertEqual([tail.from, tail.to, tail.dayCount, tail.partial], ['2026-09-13', '2026-09-15', 3, true]);
+    assertEqual(tail.segmentId, 'paris');
+    assertEqual([next.from, next.to, next.dayCount], ['2026-09-16', '2026-09-19', 4]);
+    assertEqual(next.segmentId, 'lyon');
+    assertEqual([tail.index, next.index], [2, 2], 'שתי קבוצות של אותו שבוע חולקות מספר');
+  });
+
+  s.test('הימים שאחרי סוף היעד האחרון הם קבוצה נפרדת בלי יעד', () => {
+    const last = it.groupDays(TRIP_DAYS, 'weeks', SEGS).at(-1);
+    assertEqual([last.from, last.to, last.dayCount], ['2026-09-25', '2026-09-26', 2]);
+    assertEqual(last.segmentId, null);
+    assertEqual(it.groupDays(TRIP_DAYS, 'weeks', SEGS).length, 5);
+  });
+
+  s.test('טיול שמתחיל בשבת פותח בקבוצה בת יום אחד', () => {
+    const days = it.tripDays({ startDate: '2026-09-05', endDate: '2026-09-09' }, []);
+    const groups = it.groupDays(days, 'weeks', []);
+    assertEqual([groups[0].dayCount, groups[0].from], [1, '2026-09-05']);
+    assertEqual(groups[1].from, '2026-09-06');
+  });
+
+  s.test('מצב "חודשים" נשבר ב-1 בחודש גם באמצע שבוע', () => {
+    const days = it.tripDays({ startDate: '2026-09-28', endDate: '2026-10-03' }, []);
+    const groups = it.groupDays(days, 'months', []);
+    assertEqual(groups.length, 2);
+    assertEqual([groups[0].to, groups[1].from], ['2026-09-30', '2026-10-01']);
+    assertEqual([groups[0].index, groups[1].index], [1, 2]);
+  });
+
+  s.test('groupDays על רשימה ריקה אינו קורס', () => {
+    assertEqual(it.groupDays([], 'weeks', SEGS), []);
+  });
+
+  s.test('הזנה מהירה יוצרת פריט "אחר" בלי סכום, משויך ליעד של התאריך', async () => {
+    const t = await freshTrip();
+    const seg = await it.saveSegment(t.id, {
+      city: 'טוקיו', startDate: '2026-10-01', endDate: '2026-10-05', currency: 'JPY',
+    });
+    const item = await it.quickAddItem(t.id, {
+      date: '2026-10-02', title: 'שוק הדגים', segmentId: seg.id,
+    });
+    assertEqual([item.type, item.title, item.date], ['other', 'שוק הדגים', '2026-10-02']);
+    assertEqual([item.segmentId, item.plannedAmount, item.done], [seg.id, undefined, false]);
+  });
+
+  s.test('משימה בלי כותרת נדחית, וסימון "בוצע" מתהפך', async () => {
+    const t = await freshTrip();
+    await assertThrows(
+      () => it.quickAddItem(t.id, { date: '2026-10-02', title: '   ' }),
+      'משימה ריקה נשמרה'
+    );
+    const item = await it.quickAddItem(t.id, { date: '2026-10-02', title: 'לארוז' });
+    assertEqual((await it.toggleItemDone(t.id, item.id)).done, true);
+    assertEqual((await it.toggleItemDone(t.id, item.id)).done, false);
+  });
+
   await s.done();
 }

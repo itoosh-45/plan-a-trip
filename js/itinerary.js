@@ -1,5 +1,5 @@
 import * as db from './db.js';
-import { datesBetween } from './ui.js';
+import { datesBetween, startOfWeek } from './ui.js';
 
 export const ITEM_TYPES = [
   { key: 'flight',     label: 'טיסה',     icon: 'flight' },
@@ -17,6 +17,67 @@ const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
 
 export function segmentDays(seg) {
   return datesBetween(seg.startDate, seg.endDate || seg.startDate);
+}
+
+export const GROUPINGS = { days: 'ימים', weeks: 'שבועות', months: 'חודשים' };
+
+/**
+ * כל ימי הטיול, מהמוקדם שבתאריכי הטיול והיעדים ועד המאוחר שבהם. יעד שחורג
+ * מטווח הטיול נשאר בפנים — עדיף יום מיותר ברשימה על יום שנעלם.
+ */
+export function tripDays(trip, segs = []) {
+  const places = segs.filter(s => s.kind !== 'general' && s.startDate);
+  const starts = [trip?.startDate, ...places.map(s => s.startDate)].filter(Boolean).sort();
+  if (!starts.length) return [];
+  const ends = [trip?.endDate, ...places.map(s => s.endDate || s.startDate), starts.at(-1)]
+    .filter(Boolean).sort();
+  return datesBetween(starts[0], ends.at(-1));
+}
+
+const periodOf = (iso, mode) =>
+  (mode === 'weeks' ? startOfWeek(iso) : mode === 'months' ? iso.slice(0, 7) : iso);
+
+/**
+ * הימים מחולקים לקבוצות מתקפלות. קבוצה נשברת בשני מקומות: בגבול תקופת הלוח
+ * (שבוע שמתחיל ביום א׳, או חודש), ובכל החלפת יעד. לכן יעד בן שלושה ימים
+ * באמצע שבוע, או זנב של יומיים אחרי שהיעד נגמר, הם קבוצה שמתקפלת בנפרד.
+ *
+ * index הוא מספר השבוע או החודש בתוך הטיול, וקבוצות של אותה תקופה חולקות
+ * אותו — כך רואים מיד ששתי קבוצות סמוכות הן אותו שבוע, מפוצל לפי יעד.
+ * partial אומר שהקבוצה אינה כל מה שיש לטיול באותה תקופה.
+ */
+export function groupDays(days, mode = 'days', segs = []) {
+  if (!days.length) return [];
+
+  const groups = [];
+  const perPeriod = new Map();
+  for (const day of days) {
+    const period = periodOf(day, mode);
+    perPeriod.set(period, (perPeriod.get(period) || 0) + 1);
+    const segmentId = segmentForDate(segs, day)?.id || null;
+    const last = groups.at(-1);
+    if (last && last.period === period && last.segmentId === segmentId) {
+      last.days.push(day);
+      continue;
+    }
+    groups.push({ period, segmentId, days: [day] });
+  }
+
+  let index = 0;
+  let seen = null;
+  return groups.map(g => {
+    if (g.period !== seen) { index += 1; seen = g.period; }
+    return {
+      ...g,
+      key: `g:${g.days[0]}`,
+      mode,
+      index,
+      from: g.days[0],
+      to: g.days.at(-1),
+      dayCount: g.days.length,
+      partial: g.days.length < perPeriod.get(g.period),
+    };
+  });
 }
 
 /** תאריכי ISO ניתנים להשוואה כמחרוזות — אין צורך להמיר לזמן. */
@@ -148,6 +209,20 @@ export async function saveItem(tripId, item) {
     segmentId: item.segmentId ?? null,
     plannedAmount: item.plannedAmount === '' ? undefined : item.plannedAmount,
   });
+}
+
+/**
+ * ההזנה החופשית ביום: כותרת בלבד. אין סוג לבחור, אין סכום ואין קטגוריה —
+ * רשימת היום היא רשימת משימות, ולא טופס הוצאה.
+ */
+export async function quickAddItem(tripId, { date, title, segmentId = null }) {
+  return saveItem(tripId, { type: 'other', title, date, segmentId, done: false });
+}
+
+export async function toggleItemDone(tripId, itemId) {
+  const item = await db.get(db.STORES.items, itemId);
+  if (!item) throw new Error('הפריט לא נמצא');
+  return db.put(db.STORES.items, { ...item, done: !item.done });
 }
 
 export async function removeItem(tripId, itemId) {

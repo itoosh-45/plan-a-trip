@@ -125,5 +125,25 @@ export default async function () {
     assertEqual([...sections].filter(s2 => !left.has(s2)), []);
   });
 
+  s.test('outline מחזיר מדורים ונושאים בסדר הקטלוג, בלי מוסתרים', async () => {
+    const sections = await catalog.outline(['לפני']);
+    assertTrue(sections.length > 0, 'אין מדורים');
+    assertEqual(sections.map(x => x.section), await catalog.sections('לפני'));
+    assertEqual(
+      sections[0].topics.map(t => t.topic),
+      await catalog.topics('לפני', sections[0].section),
+    );
+    const hidden = await catalog.hiddenIds();
+    const all = sections.flatMap(x => x.topics.flatMap(t => t.items));
+    assertEqual(all.filter(i => hidden.has(i.id)), [], 'פריט מוסתר הגיע ל-outline');
+    assertTrue(all.every(i => i.phase === 'לפני'), 'פריט משלב אחר הגיע ל-outline');
+  });
+
+  s.test('outline בלי סינון שלב מכסה את כל הקטלוג הגלוי', async () => {
+    const sections = await catalog.outline();
+    const count = sections.reduce((sum, x) => sum + x.topics.reduce((n, t) => n + t.items.length, 0), 0);
+    assertEqual(count, (await catalog.visible()).length);
+  });
+
   await s.done();
 }

@@ -38,9 +38,12 @@ export async function mount(host, tripId) {
     return;
   }
 
-  const [trip, sum, planned] = await Promise.all([
+  const [trip, sum, planned, budgetSummary] = await Promise.all([
     trips.getTrip(tripId), money.tripTotals(tripId), money.plannedTotal(tripId),
+    money.budgetByCategory(tripId),
   ]);
+  // תכנון התקציב נערך במסך ההוצאות. כאן הוא מוצג בלבד, לצד מה שבפועל.
+  const budgetOf = new Map(budgetSummary.rows.map(r => [r.id, r]));
   const c = trip.currency;
 
   host.append(card([
@@ -69,15 +72,26 @@ export async function mount(host, tripId) {
     host.append(card([
       el('div', { class: 'card-title', text: 'פילוח לפי קטגוריה' }),
       canvas,
-      ...sum.byCategory.map(row => el('div', { class: 'row' }, [
-        el('span', { class: 'swatch', style: `background:${row.color}` }),
-        el('span', { class: 'grow' }, [
-          el('span', { style: 'display:block', text: row.name }),
-          el('span', { class: 'sub',
-            text: `${Math.round((row.amount / (sum.total || 1)) * 100)}% מסך ההוצאות` }),
-        ]),
-        el('span', { class: 'num money', html: fmtMoneyHtml(row.amount, c) }),
-      ])),
+      ...sum.byCategory.map(row => {
+        const plan = budgetOf.get(row.id);
+        return el('div', { class: 'row' }, [
+          el('span', { class: 'swatch', style: `background:${row.color}` }),
+          el('span', { class: 'grow' }, [
+            el('span', { style: 'display:block', text: row.name }),
+            el('span', { class: 'sub',
+              text: `${Math.round((row.amount / (sum.total || 1)) * 100)}% מסך ההוצאות` }),
+          ]),
+          el('span', { style: 'text-align:end' }, [
+            el('div', { class: 'num money', html: fmtMoneyHtml(row.amount, c) }),
+            plan
+              ? el('div', { class: 'sub num', html: `מתוך ${fmtMoneyHtml(plan.budget, c)}` })
+              : null,
+            plan && plan.over
+              ? el('div', { class: 'pill over', text: `חריגה של ${fmtMoney(-plan.remaining, c)}` })
+              : null,
+          ]),
+        ]);
+      }),
       el('div', { class: 'sub', style: 'margin-block-start:8px',
         text: 'משיכות המזומן מתפרקות כאן לפי ההוצאות במזומן שנרשמו בפועל. מה שטרם הוצא מופיע כ"מזומן בארנק".' }),
     ], 'card-gap'));
@@ -122,6 +136,13 @@ export async function mount(host, tripId) {
       el('span', { class: 'grow dim', text: 'לא הוקצה' }),
       el('span', { class: 'num', html: fmtMoneyHtml(sum.unallocated, c) }),
     ]),
+    budgetSummary.budgeted
+      ? el('div', { class: 'row' }, [
+          el('span', { class: 'grow dim', text: 'מתוקצב לפי קטגוריות' }),
+          el('span', { class: `num ${budgetSummary.over ? 'pill over' : ''}`.trim(),
+            html: fmtMoneyHtml(budgetSummary.budgeted, c) }),
+        ])
+      : null,
     sum.overCeiling
       ? el('div', { class: 'toast error', style: 'margin-block-start:12px' }, [
           el('span', { html: icon('alert') }),

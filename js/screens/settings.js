@@ -567,6 +567,9 @@ function openImportPreview(trip, parsed) {
       el('div', { text: `יעדים: ${parsed.preview.segments}` }),
       el('div', { text: `פריטי מסלול: ${parsed.preview.items}` }),
       el('div', { text: `הוצאות: ${parsed.preview.expenses}` }),
+      parsed.preview.budgets
+        ? el('div', { text: `תקציבי קטגוריות: ${parsed.preview.budgets}` })
+        : null,
     ]),
     actions: [
       el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),

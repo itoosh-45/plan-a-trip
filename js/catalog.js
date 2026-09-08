@@ -114,6 +114,25 @@ export async function byTopic(phase, section, topic) {
   return cat.filter(x => x.phase === phase && x.section === section && x.topic === topic);
 }
 
+/**
+ * הקטלוג הגלוי כעץ שטוח לתצוגה: מדורים בסדר שבו הם מופיעים בקטלוג, וכל
+ * מדור עם הנושאים שלו. זו הצורה שבורר הקטלוג מציג בבת אחת, במקום ניווט
+ * במסכים. phases מצמצם לשלב מסוים; בלעדיו — כל הקטלוג.
+ */
+export async function outline(phases = null) {
+  const cat = await visible();
+  const rows = phases ? cat.filter(x => phases.includes(x.phase)) : cat;
+  const sections = [];
+  for (const item of rows) {
+    let section = sections.find(s => s.section === item.section);
+    if (!section) { section = { section: item.section, topics: [] }; sections.push(section); }
+    let topic = section.topics.find(t => t.topic === item.topic);
+    if (!topic) { topic = { topic: item.topic, items: [] }; section.topics.push(topic); }
+    topic.items.push(item);
+  }
+  return sections;
+}
+
 export async function search(q) {
   const cat = await visible();
   const needle = (q || '').trim().toLowerCase();

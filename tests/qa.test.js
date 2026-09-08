@@ -174,5 +174,45 @@ export default async function () {
     assertTrue(ms < 2000, `חישוב 500 הוצאות ארך ${Math.round(ms)}ms`);
   });
 
+  // ---- מסכים: בדיקת עשן שתופסת שגיאות ייבוא וטעויות כתיב ----
+
+  s.test('משימת הכנה עם עלות משוערת מוצגת ואינה מפילה את המסך', async () => {
+    const { trip } = await tripWith();
+    const prep = await import('../js/prep.js');
+    const screen = await import('../js/screens/prep.js');
+    await prep.saveTask(trip.id, { title: 'ביטוח נסיעות', stage: 'before', plannedAmount: 420 });
+
+    const host = document.createElement('div');
+    await screen.mount(host, trip.id);
+    assertTrue(host.textContent.includes('ביטוח נסיעות'), 'המשימה לא הוצגה');
+    assertTrue(host.textContent.includes('420'), 'הסכום המשוער לא הוצג');
+  });
+
+  s.test('מסך התכנון מציג יום, שם יום ומשימה שהוזנה מהר', async () => {
+    const { trip } = await tripWith();
+    const screen = await import('../js/screens/plan.js');
+    await it.quickAddItem(trip.id, { date: '2026-11-02', title: 'שוק הפשפשים' });
+
+    const host = document.createElement('div');
+    await screen.mount(host, trip.id);
+    assertTrue(host.textContent.includes('שוק הפשפשים'), 'הפריט לא הוצג');
+    assertTrue(host.textContent.includes('יום א׳'), 'שם היום לא הוצג');
+    assertTrue(host.textContent.includes('הוסף משימה'), 'ההזנה המהירה חסרה');
+  });
+
+  s.test('מסך ההוצאות מציג את תכנון התקציב מתחת לארנק', async () => {
+    const { trip } = await tripWith({ totalBudget: 5000 });
+    const budgets = await import('../js/budgets.js');
+    const screen = await import('../js/screens/expenses.js');
+    const cats = await trips.categories(trip.id);
+    await budgets.setBudget(trip.id, cats[0].id, 1500, 'ILS');
+
+    const host = document.createElement('div');
+    await screen.mount(host, trip.id);
+    assertTrue(host.textContent.includes('תכנון תקציב'), 'הכרטיס חסר');
+    assertTrue(host.textContent.includes('הוסף תקציב'), 'כפתור ההוספה חסר');
+    assertTrue(host.textContent.includes(cats[0].name), 'שורת הקטגוריה חסרה');
+  });
+
   await s.done();
 }
