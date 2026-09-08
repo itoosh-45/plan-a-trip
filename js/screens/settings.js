@@ -8,7 +8,10 @@ import * as backup from '../backup.js';
 import * as sheets from '../sheets.js';
 import * as catalog from '../catalog.js';
 import * as imported from '../imported.js';
-import { el, card, sheet, toast, confirmDanger, icon, ilsNote, fmtMoney, fmtMoneyHtml, fmtDateRange } from '../ui.js';
+import {
+  el, card, sheet, toast, confirmDanger, icon, fieldRow, flashRequired,
+  ilsNote, fmtMoney, fmtMoneyHtml, fmtDateRange,
+} from '../ui.js';
 import { refresh, setActiveTrip, navigate } from '../app.js';
 import { openTripWizard } from '../onboarding.js';
 import { openSheetsWizard } from '../sheets-setup.js';
@@ -109,7 +112,7 @@ function currencySection(active) {
   const rows = [...chosen].map(code => el('div', { class: 'row' }, [
     el('span', { class: 'grow row-title', text: cur.label(code) }),
     code === 'ILS'
-      ? el('span', { class: 'sub', text: 'תמיד פעיל' })
+      ? el('span', { class: 'sub', text: 'תמיד פעיל · מטבע הבסיס' })
       : el('button', {
           class: 'icon-btn', style: 'color:var(--color-danger)',
           'aria-label': `הסר את ${code}`, html: icon('close'),
@@ -124,7 +127,7 @@ function currencySection(active) {
 
   return section(
     'מטבעות פעילים',
-    'רק המטבעות שנבחרו כאן מופיעים בדרופדאון שליד כל שדה סכום. השקל תמיד פעיל.',
+    'רק המטבעות שנבחרו כאן מופיעים בדרופדאון שליד כל שדה סכום. השקל תמיד פעיל כי הוא מטבע הבסיס — שערים והזנה ידנית שלהם נמצאים במקטע "שערי המרה" שמתחת.',
     [picker, ...rows],
   );
 }
@@ -241,12 +244,17 @@ function fxAge(ts) {
 function openManualRateSheet(currency, existing) {
   const rate = el('input', {
     class: 'field', type: 'number', inputmode: 'decimal', step: '0.0001', value: existing?.rate ?? '',
+    placeholder: 'לדוגמה: 3.7',
   });
+  const body = el('div', {}, [
+    fieldRow(`כמה שקלים שווה 1 ${currency}`, rate, { required: true }),
+    el('p', { class: 'sub',
+      text: 'שער שמוזן כאן נשאר עד שמחליפים אותו כאן שוב — הרענון היומי אינו דורס שער ידני. סכומים שכבר נרשמו שומרים את השער שנצרב עליהם.' }),
+  ]);
+
   const s = sheet({
     title: `שער ידני ל-${currency}`,
-    body: el('div', { class: 'field-row' }, [
-      el('label', { class: 'field-label', text: `כמה שקלים שווה 1 ${currency}` }), rate,
-    ]),
+    body,
     actions: [
       el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
@@ -255,7 +263,10 @@ function openManualRateSheet(currency, existing) {
           toast('השער נשמר', 'success');
           s.close();
           refresh();
-        } catch (err) { toast(err.message, 'error'); }
+        } catch (err) {
+          toast(err.message, 'error');
+          flashRequired(body, { onlyEmpty: true });
+        }
       } }),
     ],
   });
@@ -266,7 +277,11 @@ async function refreshRatesFlow(currencies) {
   toast('מושך שערים…');
   const fetched = await rates.fetchRates(currencies);
   const ok = Object.entries(fetched).filter(([, r]) => r.ok);
-  if (!ok.length) { toast('לא ניתן היה למשוך שערים כרגע', 'warning'); return; }
+  if (!ok.length) {
+    // בלי רשת אין מה למשוך, וזה בדיוק הרגע שבו צריך לדעת שיש דרך שנייה
+    toast('לא ניתן היה למשוך שערים כרגע — אפשר להזין שער ידנית בכל שורה', 'warning');
+    return;
+  }
 
   const s = sheet({
     title: 'שערים שנמשכו',
@@ -292,33 +307,59 @@ async function refreshRatesFlow(currencies) {
   });
 }
 
+/**
+ * שערי המרה. המקטע מוצג תמיד, גם כשאין מטבע זר אחד: מי שמחפש כאן את השקל
+ * צריך למצוא תשובה, ולא מקטע שנעלם.
+ *
+ * לשקל אין ואינו יכול להיות שער — הוא הסרגל שכל השאר נמדד מולו. במקום
+ * להשמיט אותו ולהשאיר את זה כחידה, הוא מופיע כשורת הבסיס ואומר את זה.
+ */
 function fxSection(currencies, known) {
   const foreign = currencies.filter(c => c !== 'ILS');
-  if (!foreign.length) return null;
+
+  const baseRow = el('div', { class: 'row' }, [
+    el('div', { class: 'grow' }, [
+      el('div', { class: 'row-title', text: cur.label('ILS') }),
+      el('div', { class: 'sub',
+        text: '1 ₪ = 1 ₪ · מטבע הבסיס. אין לו שער להזין או לרענן — כל שער אחר נמדד מולו.' }),
+    ]),
+  ]);
+
+  const rows = foreign.map(code => {
+    const r = known[code];
+    return el('div', { class: 'row' }, [
+      el('div', { class: 'grow' }, [
+        el('div', { class: 'row-title', text: cur.label(code) }),
+        el('div', { class: 'sub',
+          text: r
+            ? `1 ${code} = ${r.rate} ₪ · ${fxAge(r.ts)} (${r.source})${r.stale ? ' · ישן' : ''}`
+            : 'אין שער שמור — הסכומים במטבע הזה לא יומרו לשקלים' }),
+      ]),
+      // כפתור טקסט ולא עיפרון: הזנת שער ידנית היא הדרך היחידה כשאין רשת,
+      // והיא הייתה חבויה מאחורי אייקון שאיש לא זיהה כשדה סכום
+      el('button', {
+        class: 'link-btn', text: r ? 'עדכון שער' : 'הזנת שער',
+        'aria-label': `${r ? 'עדכון' : 'הזנת'} שער ידני ל-${code}`,
+        onClick: () => openManualRateSheet(code, r),
+      }),
+    ]);
+  });
+
   return section(
     'שערי המרה',
-    'כל השערים מול השקל. האפליקציה עובדת אופליין עם השערים הידניים.',
-    [...foreign.map(code => {
-      const r = known[code];
-      return el('div', { class: 'row' }, [
-        el('div', { class: 'grow' }, [
-          el('div', { class: 'row-title', text: cur.label(code) }),
-          el('div', { class: 'sub',
-            text: r
-              ? `1 ${code} = ${r.rate} ₪ · ${fxAge(r.ts)} (${r.source})${r.stale ? ' · ישן' : ''}`
-              : 'אין שער שמור — הזן ידנית' }),
-        ]),
-        el('button', {
-          class: 'icon-btn', 'aria-label': `שער ידני ל-${code}`,
-          html: icon('edit'), onClick: () => openManualRateSheet(code, r),
-        }),
-      ]);
-    }),
-    el('button', {
-      class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
-      html: `${icon('refresh')}<span>רענן שערים מהאינטרנט</span>`,
-      onClick: () => refreshRatesFlow(foreign),
-    })],
+    'כל השערים נמדדים מול השקל. אפשר למשוך אותם מהאינטרנט, ואפשר להזין כל שער ידנית — כך ההמרות עובדות גם אופליין.',
+    [
+      baseRow,
+      ...rows,
+      foreign.length
+        ? el('button', {
+            class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
+            html: `${icon('refresh')}<span>רענן שערים מהאינטרנט</span>`,
+            onClick: () => refreshRatesFlow(foreign),
+          })
+        : el('p', { class: 'sub', style: 'margin:8px 0 0',
+            text: 'אין מטבעות זרים פעילים, ולכן אין שער לרענן — בשקלים בלבד אין המרה. הוסיפו מטבע במקטע "מטבעות פעילים" שמעל, והשער שלו מול השקל יופיע כאן.' }),
+    ],
   );
 }
 
@@ -773,8 +814,7 @@ export async function mount(host, tripId) {
 
   const known = {};
   for (const code of active) known[code] = await rates.getRate(code);
-  const fx = fxSection(active, known);
-  if (fx) host.append(fx);
+  host.append(fxSection(active, known));
 
   if (trip) {
     const cats = await trips.categories(trip.id);
