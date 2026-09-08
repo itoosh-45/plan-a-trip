@@ -184,5 +184,72 @@ export default async function () {
     assertTrue(performance.now() - started < 2000, 'החישוב ל-500 הוצאות ארך יותר משתי שניות');
   });
 
+  s.test('הוצאה במטבע אחר מומרת למטבע הטיול, ולא נספרת באותו מספר', async () => {
+    await db.wipe();
+    // 1 לארי = 1.1515 ש"ח, ולכן 100 ש"ח הם 86.84 לארי
+    await rates.setManualRate('GEL', 1.1515);
+    const trip = await trips.createTrip({
+      name: 'גאורגיה', startDate: '2026-06-01', endDate: '2026-06-10', currency: 'GEL',
+    });
+    const gen = await it.generalSegment(trip.id);
+    await expenses.saveExpense(trip.id, { amount: 100, currency: 'ILS', segmentId: gen.id });
+
+    const t = await money.tripTotals(trip.id);
+    assertClose(t.total, 86.84, 0.01, 'הסכום לא הומר למטבע הטיול');
+    assertEqual(t.unconverted, []);
+  });
+
+  s.test('הוצאה במטבע הטיול נשארת כמו שהיא, גם כשהשער אינו 1', async () => {
+    await db.wipe();
+    await rates.setManualRate('GEL', 1.1515);
+    const trip = await trips.createTrip({ name: 'גאורגיה', currency: 'GEL' });
+    const gen = await it.generalSegment(trip.id);
+    await expenses.saveExpense(trip.id, { amount: 100, currency: 'GEL', segmentId: gen.id });
+    assertEqual((await money.tripTotals(trip.id)).total, 100);
+  });
+
+  s.test('מטבע בלי שער שמור אינו נספר 1:1 אלא מדווח בנפרד', async () => {
+    await db.wipe();
+    const trip = await trips.createTrip({ name: 'גאורגיה', currency: 'GEL' });
+    const gen = await it.generalSegment(trip.id);
+    await expenses.saveExpense(trip.id, { amount: 100, currency: 'ILS', segmentId: gen.id });
+    await expenses.saveExpense(trip.id, { amount: 40, currency: 'GEL', segmentId: gen.id });
+
+    const t = await money.tripTotals(trip.id);
+    assertEqual(t.total, 40, 'סכום שאי אפשר להמיר נספר כאילו הוא במטבע הטיול');
+    assertEqual(t.unconverted, [{ currency: 'ILS', amount: 100 }]);
+  });
+
+  s.test('פילוח היעדים והקטגוריות משתמש באותם סכומים מומרים', async () => {
+    await db.wipe();
+    await rates.setManualRate('GEL', 1.1515);
+    const trip = await trips.createTrip({
+      name: 'גאורגיה', startDate: '2026-06-01', endDate: '2026-06-10', currency: 'GEL', totalBudget: 1000,
+    });
+    const seg = await it.saveSegment(trip.id, {
+      city: 'טביליסי', startDate: '2026-06-01', endDate: '2026-06-05', allocation: 500,
+    });
+    const cats = await trips.categories(trip.id);
+    await expenses.saveExpense(trip.id, {
+      amount: 100, currency: 'ILS', segmentId: seg.id, categoryId: cats[0].id,
+    });
+    const t = await money.tripTotals(trip.id);
+    assertClose(t.bySegment.find(x => x.id === seg.id).amount, 86.84, 0.01);
+    assertClose(t.byCategory.find(c => c.id === cats[0].id).amount, 86.84, 0.01);
+  });
+
+  s.test('מזומן שנמשך במטבע אחר מומר גם הוא ליתרת הטיול', async () => {
+    await db.wipe();
+    await rates.setManualRate('GEL', 1.1515);
+    const trip = await trips.createTrip({ name: 'גאורגיה', currency: 'GEL' });
+    const gen = await it.generalSegment(trip.id);
+    await expenses.saveExpense(trip.id, {
+      kind: 'withdraw', amount: 200, currency: 'ILS', segmentId: gen.id,
+    });
+    const t = await money.tripTotals(trip.id);
+    assertEqual(t.balances.ILS, 200, 'הארנק נשמר במטבע שנמשך');
+    assertClose(t.cashInWallet, 173.69, 0.01, 'המזומן לא הומר למטבע הטיול');
+  });
+
   await s.done();
 }

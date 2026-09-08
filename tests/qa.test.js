@@ -87,11 +87,13 @@ export default async function () {
     assertClose((await money.tripTotals(trip.id)).total, 13.68, 0.001);
   });
 
-  s.test('מטבע בלי שער שמור אינו קורס — הסכום מוצג כמו שהוא', async () => {
+  s.test('מטבע בלי שער שמור אינו נספר 1:1, אלא מדווח בנפרד', async () => {
     const { trip, gen } = await tripWith();
     const e = await expenses.saveExpense(trip.id, { amount: 40, currency: 'XYZ', segmentId: gen.id });
     assertEqual(e.rateToILS, undefined, 'נצרב שער שלא קיים');
-    assertEqual((await money.tripTotals(trip.id)).total, 40);
+    const t = await money.tripTotals(trip.id);
+    assertEqual(t.total, 0, 'סכום שאי אפשר להמיר נספר כאילו הוא במטבע הטיול');
+    assertEqual(t.unconverted, [{ currency: 'XYZ', amount: 40 }]);
   });
 
   s.test('שינוי שער אחרי הזנה אינו משנה הוצאות עבר', async () => {

@@ -95,7 +95,9 @@ async function openExpenseSheet(trip, existing, kind = 'expense') {
             note: note.value || undefined,
           });
           if (saved.overdrawn) toast('שימו לב: ההוצאה גדולה מיתרת המזומן בארנק', 'warning');
-          else toast('נשמר', 'success');
+          else if (!saved.rateToILS && saved.currency !== 'ILS') {
+            toast(`נשמר. אין שער המרה ל-${saved.currency}, ולכן הסכום עדיין לא נספר בסך — אפשר להזין שער בהגדרות`, 'warning');
+          } else toast('נשמר', 'success');
           s.close();
           refresh();
         } catch (err) { toast(err.message, 'error'); }
@@ -388,6 +390,17 @@ function budgetCard(trip, summary, rate) {
   return card(body, 'card-gap');
 }
 
+/**
+ * מטבע בלי שער אינו מומר, ולכן הסכומים בו אינם נספרים בסך. עדיף לומר זאת
+ * מפורשות מאשר להציג סכום שנראה נכון ואינו.
+ */
+function missingRateNote(unconverted) {
+  if (!unconverted?.length) return null;
+  const codes = unconverted.map(u => u.currency).join(', ');
+  return el('div', { class: 'toast warning', style: 'margin-block-start:10px',
+    text: `אין שער המרה ל-${codes}, ולכן הסכומים במטבע הזה אינם נספרים בסך. אפשר להזין שער בהגדרות → שערי מטבע.` });
+}
+
 // ---------- המסך ----------
 
 export async function mount(host, tripId) {
@@ -423,6 +436,7 @@ export async function mount(host, tripId) {
         ilsNote(totals.total, trip.currency, tripRate),
       ]),
     ]),
+    missingRateNote(totals.unconverted),
   ], 'card-gap'));
 
   host.append(el('div', { class: 'card-gap', style: 'display:flex; gap:8px; overflow-x:auto; padding-block:4px' }, [

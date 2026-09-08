@@ -71,6 +71,10 @@ export async function mount(host, tripId) {
       statTile('מתוכנן במסלול', fmtMoneyHtml(planned, c), '', ils(planned)),
       statTile('מזומן בארנק', fmtMoneyHtml(sum.cashInWallet, c), '', ils(sum.cashInWallet)),
     ]),
+    sum.unconverted?.length
+      ? el('div', { class: 'toast warning', style: 'margin-block-start:12px',
+          text: `אין שער המרה ל-${sum.unconverted.map(u => u.currency).join(', ')}, ולכן הסכומים במטבע הזה אינם נספרים.` })
+      : null,
   ], 'card-gap'));
 
   if (sum.byCategory.length) {

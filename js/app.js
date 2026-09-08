@@ -143,7 +143,9 @@ function buildNav() {
 /** רענון שערים יומי, שקט לגמרי. כישלון אינו מפריע לאפליקציה לעלות. */
 async function autoRefreshRates() {
   try {
-    const res = await rates.autoRefresh(await cur.listActive());
+    // גם מטבע של טיול שאינו ברשימה הפעילה — בלי שער אי אפשר להמיר אליו כלום
+    const [active, all] = await Promise.all([cur.listActive(), listTrips()]);
+    const res = await rates.autoRefresh([...new Set([...active, ...all.map(t => t.currency)])]);
     if (res.saved) refresh();
   } catch { /* אין רשת או שהשירות נפל — ננסה שוב בטעינה הבאה */ }
 }
