@@ -4,7 +4,7 @@
   "description": "תכנון מסלול, תקציב ומעקב הוצאות — עובד במלואו אופליין.",
   "lang": "he",
   "dir": "rtl",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

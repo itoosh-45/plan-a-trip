@@ -1,5 +1,5 @@
 // מטמון האפליקציה. שינוי המספר כאן מפיל את המטמון הישן בהתקנה הבאה.
-const CACHE = 'trip-planner-v16';
+const CACHE = 'trip-planner-v17';
 
 const SHELL = [
   './',
@@ -76,6 +76,15 @@ self.addEventListener('fetch', event => {
       if (response.ok) {
         const cache = await caches.open(CACHE);
         cache.put(request, response.clone());
+      }
+      // Safari חוסם ב-standalone mode תשובה שעברה redirect ("has redirections").
+      // בונים תשובה חדשה נטולת הדגל כדי שניווט מהאייקון במסך הבית לא ייכשל.
+      if (response.redirected) {
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
       }
       return response;
     } catch {
