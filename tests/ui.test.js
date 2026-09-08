@@ -3,7 +3,7 @@ import { ICONS } from '../js/icons.js';
 import {
   icon, el, fmtDate, fmtDateRange, fmtMoneyHtml, nightsBetween, datesBetween,
   fmtDayLabel, fmtDays, startOfWeek, ilsText, ilsNote, ilsPairNote,
-  fieldRow, requiredNote, flashRequired,
+  fieldRow, requiredNote, flashRequired, amountField, convertAmount,
 } from '../js/ui.js';
 import { symbol, NAMES } from '../js/currencies.js';
 
@@ -167,6 +167,68 @@ export default async function () {
     cal.removeAttribute('data-empty');
     assertEqual(flashRequired(form, { onlyEmpty: true }), 0, 'לוח שנבחר בו טווח עדיין נספר כריק');
     form.remove();
+  });
+
+  // ---- הזנת סכום והמרה למטבע הטיול ----
+
+  // שער מול השקל: 1 THB = 0.1167 ₪, 1 USD = 3.7 ₪
+  const FX = { ILS: 1, THB: 0.1167, USD: 3.7 };
+  const field = over => amountField({
+    currencies: ['ILS', 'THB', 'USD'], convertTo: 'THB', fx: FX, ...over,
+  });
+  const convLine = node => node.querySelector('.amount-conv').textContent;
+
+  s.test('convertAmount ממיר דרך השקל, ובלי שער מחזיר null ולא 1:1', () => {
+    assertEqual(convertAmount(150, 1, 0.1167), 1285.35, 'שקלים לבאהט');
+    assertEqual(convertAmount(100, 3.7, 0.1167), 3170.52, 'דולר לבאהט דרך השקל');
+    assertEqual(convertAmount(100, 3.7, 3.7), 100, 'אותו מטבע אינו משנה סכום');
+    assertEqual(convertAmount(100, null, 0.1167), null, 'בלי שער מקור');
+    assertEqual(convertAmount(100, 3.7, null), null, 'בלי שער יעד');
+  });
+
+  s.test('סכום בשקלים בטיול בבאהט מוצג מומר, עם השער שלפיו', () => {
+    const f = field({ amount: 150, currency: 'ILS' });
+    assertTrue(convLine(f.node).includes('1,285'), convLine(f.node));
+    assertTrue(convLine(f.node).includes('8.57'), 'השער עצמו אינו מוצג');
+    assertEqual(f.readIn('THB'), 1285.35);
+    assertEqual(f.read(), { amount: 150, currency: 'ILS' }, 'הקריאה הרגילה משנה את מה שהוזן');
+  });
+
+  s.test('כפתור ההמרה כותב את הסכום במטבע הטיול ומחליף את הבורר', () => {
+    const f = field({ amount: 150, currency: 'ILS' });
+    f.node.querySelector('.amount-conv .link-btn').click();
+    assertEqual(f.read(), { amount: 1285.35, currency: 'THB' });
+    assertEqual(f.node.querySelector('.amount-conv').hidden, true, 'אין מה להמיר, והשורה נשארה');
+  });
+
+  s.test('סכום שכבר במטבע הטיול אינו מקבל שורת המרה', () => {
+    const f = field({ amount: 500, currency: 'THB' });
+    assertEqual(f.node.querySelector('.amount-conv').hidden, true);
+    assertEqual(f.readIn('THB'), 500);
+  });
+
+  s.test('מטבע בלי שער אומר זאת, ואינו ממיר 1:1', () => {
+    const f = field({ amount: 100, currency: 'EUR', currencies: ['ILS', 'EUR', 'THB'] });
+    assertTrue(convLine(f.node).includes('אין שער שמור'), convLine(f.node));
+    assertEqual(f.node.querySelector('.amount-conv .link-btn').hidden, true, 'הוצע להמיר בלי שער');
+    assertEqual(f.readIn('THB'), null, 'סכום הומר בלי שער');
+  });
+
+  s.test('שדה ריק אינו ממציא סכום', () => {
+    const f = field({ currency: 'ILS' });
+    assertEqual(f.readIn('THB'), undefined);
+    assertEqual(f.read().amount, undefined);
+    assertTrue(convLine(f.node).includes('1 ₪'), 'השער עצמו מוצג גם לפני שהוקלד סכום');
+  });
+
+  s.test('החלפת המטבע בבורר מעדכנת את שורת ההמרה', () => {
+    const f = field({ amount: 100, currency: 'THB' });
+    const pick = f.node.querySelector('select');
+    pick.value = 'USD';
+    pick.dispatchEvent(new Event('change'));
+    assertEqual(f.node.querySelector('.amount-conv').hidden, false);
+    assertEqual(f.readIn('THB'), 3170.52);
+    assertTrue(convLine(f.node).includes('31.71'), convLine(f.node));
   });
 
   await s.done();

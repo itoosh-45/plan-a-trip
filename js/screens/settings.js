@@ -234,6 +234,9 @@ async function hiddenCatalogSection() {
 
 // ---------- שערי המרה ----------
 
+/** שער מוצג בעד ארבע ספרות אחרי הנקודה — מעבר לזה זה רעש, לא דיוק. */
+const round4 = n => Math.round(n * 10000) / 10000;
+
 function fxAge(ts) {
   const days = Math.floor((Date.now() - Date.parse(ts)) / 86400000);
   if (days <= 0) return 'עודכן היום';
@@ -314,14 +317,22 @@ async function refreshRatesFlow(currencies) {
  * לשקל אין ואינו יכול להיות שער — הוא הסרגל שכל השאר נמדד מולו. במקום
  * להשמיט אותו ולהשאיר את זה כחידה, הוא מופיע כשורת הבסיס ואומר את זה.
  */
-function fxSection(currencies, known) {
+function fxSection(currencies, known, tripCurrency = 'ILS') {
   const foreign = currencies.filter(c => c !== 'ILS');
 
+  // לשקל יש שער מול מטבע הטיול, והוא זה שמעניין את מי שמזין סכום בשקלים.
+  // הוא נגזר מהשער השמור של מטבע הטיול, ולכן מוצג רק כשיש שער כזה.
+  const trip = (tripCurrency || 'ILS').toUpperCase();
+  const tripRate = trip === 'ILS' ? 1 : known[trip]?.rate ?? null;
   const baseRow = el('div', { class: 'row' }, [
     el('div', { class: 'grow' }, [
       el('div', { class: 'row-title', text: cur.label('ILS') }),
       el('div', { class: 'sub',
-        text: '1 ₪ = 1 ₪ · מטבע הבסיס. אין לו שער להזין או לרענן — כל שער אחר נמדד מולו.' }),
+        text: trip === 'ILS'
+          ? 'מטבע הבסיס, וגם מטבע הטיול הפעיל — כל שער כאן נמדד מולו.'
+          : tripRate
+            ? `1 ₪ = ${round4(1 / tripRate)} ${cur.symbol(trip)} מול מטבע הטיול · נגזר מהשער של ${trip}, ולפיו מומר כל סכום שמוזן בשקלים.`
+            : `מטבע הבסיס. שער השקל מול מטבע הטיול (${trip}) ייגזר מהשער של ${trip} — הזינו אותו בשורה שלו כדי שסכומים בשקלים יומרו.` }),
     ]),
   ]);
 
@@ -814,7 +825,7 @@ export async function mount(host, tripId) {
 
   const known = {};
   for (const code of active) known[code] = await rates.getRate(code);
-  host.append(fxSection(active, known));
+  host.append(fxSection(active, known, trip?.currency));
 
   if (trip) {
     const cats = await trips.categories(trip.id);

@@ -305,6 +305,21 @@ body {
   letter-spacing: var(--tracking-head);
 }
 
+/* ---- שורת ההמרה מתחת לשדה סכום ---- */
+/* מה שהוקלד, כמה זה במטבע הטיול, ולפי איזה שער — בלי להתחרות בשדה עצמו. */
+.amount-conv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-block-start: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+}
+.amount-conv[hidden] { display: none; }
+.amount-conv .link-btn { min-height: 32px; padding: 4px 6px; font-size: var(--text-xs); }
+.amount-conv .link-btn[hidden] { display: none; }
+
 /* ---- שדות חובה: כוכבית אחת, ומקרא שאפשר ללחוץ עליו ---- */
 /* קטנה ואדומה, בגוון האזהרה הרגיל. זה כל הסימון של "חייבים למלא". */
 .req {

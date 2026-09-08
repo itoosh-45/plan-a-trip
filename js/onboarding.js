@@ -2,8 +2,9 @@ import * as trips from './trips.js';
 import * as it from './itinerary.js';
 import * as cur from './currencies.js';
 import * as prep from './prep.js';
+import * as rates from './rates.js';
 import {
-  el, sheet, toast, icon, fieldRow, requiredNote, flashRequired,
+  el, sheet, toast, icon, fieldRow, requiredNote, flashRequired, amountField,
   fmtMoney, fmtDateRange,
 } from './ui.js';
 import { dateRangeField } from './daterange.js';
@@ -171,36 +172,49 @@ export function openTripWizard(existing) {
   // ---- שלב 3: תקרה והקצאות ----
   async function stepBudget() {
     const segs = (await it.listSegments(trip.id)).filter(x => x.kind !== 'general');
-    const ceiling = el('input', {
-      class: 'field', type: 'number', inputmode: 'decimal', step: '1', value: trip.totalBudget || '',
+    // התקרה וההקצאות נשמרות כמספרים במטבע הטיול, ולכן סכום שהוזן בשקלים
+    // (או בכל מטבע פעיל אחר) מומר כאן לפי השער השמור.
+    const currencies = await cur.listActive();
+    const fx = await rates.rateMap([...currencies, trip.currency]);
+    const field = amount => amountField({
+      amount: amount || '', currency: trip.currency, currencies, convertTo: trip.currency, fx,
     });
+
+    const ceiling = field(trip.totalBudget);
     const inputs = new Map();
 
     body.append(
       optionalNote('אין בשלב הזה שדות חובה. תקציב שלא נקבע עכשיו לא חוסם דבר, ואפשר להזין אותו מאוחר יותר.'),
-      fieldRow(`תקרת תקציב כוללת (${trip.currency})`, ceiling),
+      fieldRow('תקרת תקציב כוללת', ceiling.node),
+      el('p', { class: 'sub', style: 'margin:6px 0 0',
+        text: `התקרה וההקצאות נשמרות במטבע הטיול (${cur.symbol(trip.currency)}). אפשר להזין בשקלים או בכל מטבע פעיל, והסכום יומר לפי השער השמור.` }),
     );
     if (segs.length) {
       body.append(el('div', { class: 'field-label', style: 'margin-block-start:16px', text: 'הקצאה לכל יעד' }));
       for (const seg of segs) {
-        const input = el('input', {
-          class: 'field', type: 'number', inputmode: 'decimal', step: '1', value: seg.allocation || '',
-          style: 'max-width:140px',
-        });
+        const input = field(seg.allocation);
         inputs.set(seg.id, { seg, input });
-        body.append(el('div', { class: 'row' }, [
-          el('span', { class: 'grow', text: seg.city }),
-          input,
+        body.append(el('div', { class: 'field-row' }, [
+          el('label', { class: 'field-label', text: seg.city }),
+          input.node,
         ]));
       }
     }
 
+    const inTrip = (money, label) => {
+      const value = money.readIn(trip.currency);
+      if (value === null) {
+        throw new Error(`אין שער המרה ל-${money.read().currency}, ולכן ${label} אינו ניתן להמרה למטבע הטיול`);
+      }
+      return value || 0;
+    };
+
     nav({
       onNext: async () => {
         try {
-          trip = await trips.updateTrip({ ...trip, totalBudget: Number(ceiling.value) || 0 });
+          trip = await trips.updateTrip({ ...trip, totalBudget: inTrip(ceiling, 'התקציב') });
           for (const { seg, input } of inputs.values()) {
-            await it.saveSegment(trip.id, { ...seg, allocation: Number(input.value) || 0 });
+            await it.saveSegment(trip.id, { ...seg, allocation: inTrip(input, `התקציב של ${seg.city}`) });
           }
           const b = await trips.budgetSummary(trip.id);
           if (b.over) toast(`ההקצאות חורגות מהתקרה ב-${fmtMoney(-b.unallocated, trip.currency)}`, 'warning');

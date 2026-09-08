@@ -98,7 +98,8 @@ export async function ensureTripCovers(trip, startDate, endDate) {
   });
 }
 
-function openSegmentSheet(trip, existing, prefill = { startDate: '', endDate: '' }) {
+async function openSegmentSheet(trip, existing, prefill = { startDate: '', endDate: '' }) {
+  const currencies = await cur.listActive();
   const city = el('input', { class: 'field', type: 'text', value: existing?.city || '' });
   const country = el('input', { class: 'field', type: 'text', value: existing?.country || '' });
   // בלי min/max: חריגה מטווח הטיול היא מקרה לגיטימי שנפתר בחלון ההארכה,
@@ -108,8 +109,10 @@ function openSegmentSheet(trip, existing, prefill = { startDate: '', endDate: ''
     endDate: existing?.endDate ?? prefill.endDate,
     label: 'טווח התאריכים ביעד',
   });
-  const allocation = el('input', {
-    class: 'field', type: 'number', inputmode: 'decimal', step: '1', value: existing?.allocation || '',
+  // ההקצאה נשמרת כמספר במטבע הטיול, ולכן הזנה בשקלים מומרת בשמירה עצמה
+  const allocation = amountField({
+    amount: existing?.allocation || '', currency: trip.currency, currencies,
+    convertTo: trip.currency, fx: await rates.rateMap([...currencies, trip.currency]),
   });
 
   const body = el('div', {}, [
@@ -117,9 +120,9 @@ function openSegmentSheet(trip, existing, prefill = { startDate: '', endDate: ''
     fieldRow('שם היעד', city, { required: true }),
     fieldRow('מדינה', country),
     fieldRow('טווח התאריכים ביעד', range.node, { required: true }),
-    fieldRow(`הקצאת תקציב (${cur.symbol(trip.currency)})`, allocation),
+    fieldRow('הקצאת תקציב', allocation.node),
     el('p', { class: 'sub',
-      text: 'תאריכים שחורגים מטווח הטיול יציעו להאריך אותו. חפיפה ליעד אחר אינה אפשרית.' }),
+      text: `תאריכים שחורגים מטווח הטיול יציעו להאריך אותו. חפיפה ליעד אחר אינה אפשרית. ההקצאה נשמרת במטבע הטיול (${cur.symbol(trip.currency)}) — סכום שמוזן בשקלים יומר לפי השער השמור.` }),
   ]);
 
   const s = sheet({
@@ -144,13 +147,17 @@ function openSegmentSheet(trip, existing, prefill = { startDate: '', endDate: ''
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
         try {
           const picked = range.read();
+          const money = allocation.readIn(trip.currency);
+          if (money === null) {
+            throw new Error(`אין שער המרה ל-${allocation.read().currency}, ולכן אי אפשר להמיר את ההקצאה למטבע הטיול`);
+          }
           const covering = await ensureTripCovers(trip, picked.startDate, picked.endDate);
           if (!covering) return;
           await it.saveSegment(trip.id, {
             ...existing,
             city: city.value, country: country.value,
             startDate: picked.startDate, endDate: picked.endDate,
-            allocation: Number(allocation.value) || 0,
+            allocation: money || 0,
             currency: existing?.currency || trip.currency,
           });
           toast('היעד נשמר', 'success');
@@ -196,6 +203,7 @@ async function openItemSheet(ctx, date, existing, bounds = {}) {
   ]);
   const planned = amountField({
     amount: existing?.plannedAmount, currency: existing?.currency || trip.currency, currencies,
+    convertTo: trip.currency, fx: await rates.rateMap([...currencies, trip.currency]),
   });
 
   const body = el('div', {}, [

@@ -6,8 +6,8 @@ import * as budgets from '../budgets.js';
 import * as cur from '../currencies.js';
 import * as rates from '../rates.js';
 import {
-  el, card, sheet, toast, confirmDanger, icon, amountField, ilsNote, ilsText, ilsPairNote,
-  fmtMoney, fmtMoneyHtml, fmtDate,
+  el, card, sheet, toast, confirmDanger, icon, amountField, fieldRow,
+  ilsNote, ilsText, ilsPairNote, fmtMoney, fmtMoneyHtml, fmtDate,
 } from '../ui.js';
 import { refresh } from '../app.js';
 import { noTripCard } from './no-trip.js';
@@ -28,11 +28,16 @@ async function openExpenseSheet(trip, existing, kind = 'expense') {
     trips.categories(trip.id), it.listSegments(trip.id), cur.listActive(),
   ]);
   const defaultSegment = existing?.segmentId || await it.defaultSegmentId(trip.id);
+  const fx = await rates.rateMap([...currencies, trip.currency]);
 
+  // אפשר להזין בשקלים גם בטיול שמתנהל במטבע אחר: השדה מראה כמה זה במטבע
+  // הטיול לפי השער השמור, ומי שרוצה — ממיר בלחיצה ושומר במטבע הטיול.
   const amount = amountField({
     amount: existing?.amount,
     currency: existing?.currency || trip.currency,
     currencies,
+    convertTo: trip.currency,
+    fx,
   });
   const segment = el('select', { class: 'field' }, segs.map(s =>
     el('option', { value: s.id, selected: s.id === defaultSegment, text: s.city })));
@@ -183,18 +188,21 @@ function walletCard(trip, balances, cashRows, cats, segs, fx) {
  * חריגה שואלת אם להגדיל אותו, ואם מסרבים — התקציב נשמר בכל זאת ומסומן.
  */
 async function openBudgetSheet(trip, summary, row) {
-  const amount = el('input', {
-    class: 'field', type: 'number', inputmode: 'decimal', step: '1',
-    value: row.budget || '', 'aria-label': 'סכום התקציב',
+  const currencies = await cur.listActive();
+  const fx = await rates.rateMap([...currencies, trip.currency]);
+  // התקציב נשמר במטבע שבו הוזן, וההשוואה מול ההוצאות נעשית בהמרה לפי השער.
+  const amount = amountField({
+    amount: row.budget || '',
+    currency: trip.currency,
+    currencies,
+    convertTo: trip.currency,
+    fx,
   });
 
   const s = sheet({
     title: `תקציב ל${row.name}`,
     body: el('div', {}, [
-      el('div', { class: 'field-row' }, [
-        el('label', { class: 'field-label', text: `סכום (${cur.symbol(trip.currency)})` }),
-        amount,
-      ]),
+      fieldRow('סכום התקציב', amount.node),
       el('p', { class: 'sub',
         text: `שולם עד כה ${fmtMoney(row.spent || 0, trip.currency)}${
           row.planned ? ` · מתוכנן במסלול ${fmtMoney(row.planned, trip.currency)}` : ''}` }),
@@ -219,11 +227,17 @@ async function openBudgetSheet(trip, summary, row) {
         : el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
         try {
-          const value = amount.value === '' ? 0 : Number(amount.value);
+          // הסכום נשמר במטבע שנבחר, אבל ההשוואה לתקרת הטיול היא במטבע הטיול
+          const entered = amount.read();
+          const value = entered.amount ?? 0;
+          const inTrip = amount.readIn(trip.currency);
+          if (value && inTrip === null) {
+            throw new Error(`אין שער המרה ל-${entered.currency}, ולכן אי אפשר להשוות את התקציב למטבע הטיול`);
+          }
           const others = (summary.budgeted || 0) - (row.budget || 0);
-          const projected = Math.round((others + value) * 100) / 100;
+          const projected = Math.round((others + (inTrip ?? 0)) * 100) / 100;
 
-          await budgets.setBudget(trip.id, row.id, value, trip.currency);
+          await budgets.setBudget(trip.id, row.id, value, entered.currency);
 
           if (summary.ceiling > 0 && projected > summary.ceiling) {
             const raise = await confirmDanger({

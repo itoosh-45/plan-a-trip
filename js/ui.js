@@ -237,11 +237,32 @@ export function datesBetween(fromIso, toIso) {
   return out;
 }
 
+const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/**
+ * המרה בין שני מטבעות דרך השקל, לפי שערים מול השקל. אין שער לאחד מהם —
+ * מוחזר null, ולעולם לא 1:1: המרה שקרית גרועה מהיעדר המרה.
+ */
+export function convertAmount(amount, fromRate, toRate) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || !fromRate || !toRate) return null;
+  return round2((n * fromRate) / toRate);
+}
+
 /**
  * שדה סכום עם דרופדאון מטבע לצדו. מוחזר יחד עם read() כדי שאף מסך לא יצטרך
  * לדעת איך השדה בנוי — זו הצורה היחידה של הזנת סכום באפליקציה.
+ *
+ * convertTo הוא מטבע היעד, בדרך כלל מטבע הטיול. כשנבחר מטבע אחר — למשל שקל
+ * בטיול שמתנהל בבאהט — השדה מראה בזמן אמת כמה זה במטבע היעד ולפי איזה שער,
+ * ומציע להמיר בלחיצה אחת. השער הוא השער השמור האמיתי; מטבע שאין לו שער אומר
+ * זאת במקום לנחש.
+ *
+ * fx הוא מפת שערים מול השקל ({ THB: 0.1167 }), כפי ש-rates.rateMap מחזיר.
  */
-export function amountField({ amount = '', currency = 'ILS', currencies = ['ILS'] } = {}) {
+export function amountField({
+  amount = '', currency = 'ILS', currencies = ['ILS'], convertTo = null, fx = {},
+} = {}) {
   const value = el('input', {
     class: 'field', type: 'number', inputmode: 'decimal', step: '0.01',
     value: amount === null || amount === undefined ? '' : amount, 'aria-label': 'סכום',
@@ -253,13 +274,68 @@ export function amountField({ amount = '', currency = 'ILS', currencies = ['ILS'
     value: c, selected: c === currency, text: `${currencySymbol(c)} · ${c}`,
   })));
 
+  const target = (convertTo || '').toUpperCase();
+  const rateOf = code => (code === 'ILS' ? (fx.ILS ?? 1) : fx[code] ?? null);
+  const inTarget = (n, from = pick.value) => convertAmount(n, rateOf(from), rateOf(target));
+
+  const text = el('span');
+  const convertBtn = el('button', {
+    type: 'button', class: 'link-btn', text: `המרה ל-${currencySymbol(target) || target}`,
+    onClick: () => {
+      const converted = inTarget(value.value);
+      if (converted === null) return;
+      value.value = converted;
+      pick.value = target;
+      update();
+    },
+  });
+  const note = el('div', { class: 'amount-conv' }, [text, convertBtn]);
+
+  /** שורת ההמרה נדלקת רק כשיש באמת המרה להראות — מטבע היעד עצמו שקט. */
+  function update() {
+    const from = pick.value;
+    if (!target || from === target) { note.hidden = true; return; }
+    note.hidden = false;
+
+    const rate = inTarget(1, from);
+    if (rate === null) {
+      text.textContent = `אין שער שמור ל-${from} — לא ניתן להמיר ל-${target}. אפשר להזין שער בהגדרות.`;
+      convertBtn.hidden = true;
+      return;
+    }
+
+    const typed = value.value === '' ? null : inTarget(value.value, from);
+    text.textContent = typed === null
+      ? `1 ${currencySymbol(from)} = ${rate} ${currencySymbol(target)} — לפי השער השמור`
+      : `≈ ${fmtMoney(typed, target)} · 1 ${currencySymbol(from)} = ${rate} ${currencySymbol(target)}`;
+    convertBtn.hidden = typed === null;
+  }
+
+  value.addEventListener('input', update);
+  pick.addEventListener('change', update);
+  update();
+
   return {
-    node: el('div', { style: 'display:flex; gap:8px' }, [value, pick]),
+    node: el('div', {}, [
+      el('div', { style: 'display:flex; gap:8px' }, [value, pick]),
+      note,
+    ]),
     input: value,
     read: () => ({
       amount: value.value === '' ? undefined : Number(value.value),
       currency: pick.value,
     }),
+    /**
+     * הסכום במטבע מבוקש — לשדות שנשמרים כמספר במטבע הטיול ואין להם מטבע
+     * משלהם. null פירושו שאין שער ולכן אין המרה.
+     */
+    readIn: (code = target) => {
+      if (value.value === '') return undefined;
+      const to = (code || '').toUpperCase();
+      const n = Number(value.value);
+      if (!to || pick.value === to) return n;
+      return convertAmount(n, rateOf(pick.value), rateOf(to));
+    },
   };
 }
 
