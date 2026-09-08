@@ -1,5 +1,5 @@
 // מטמון האפליקציה. שינוי המספר כאן מפיל את המטמון הישן בהתקנה הבאה.
-const CACHE = 'trip-planner-v18';
+const CACHE = 'trip-planner-v19';
 
 const SHELL = [
   './',
@@ -52,12 +52,27 @@ self.addEventListener('install', event => {
   })());
 });
 
+/**
+ * החלפת גרסה. הדף שפתוח באותו רגע נטען מהמטמון הישן, ולכן אחרי שהמטמון
+ * הוחלף צריך לטעון אותו מחדש — אחרת המשתמש ממשיך לראות את הגרסה הקודמת עד
+ * הפעם הבאה שהוא סוגר ופותח את האפליקציה, ולפעמים גם אז.
+ *
+ * קיומו של מטמון ישן הוא ההבדל בין עדכון להתקנה ראשונה: בהתקנה ראשונה הדף
+ * זה עתה נטען מהרשת, ואין שום סיבה לרענן אותו.
+ */
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    for (const key of await caches.keys()) {
-      if (key !== CACHE) await caches.delete(key);
-    }
+    const stale = (await caches.keys()).filter(key => key !== CACHE);
+    for (const key of stale) await caches.delete(key);
     await self.clients.claim();
+    if (!stale.length) return;
+
+    // ההודעה, ולא client.navigate: ניווט יזום מה-SW סוגר את החלון בחלק
+    // מהדפדפנים, וחלון שנסגר גרוע בהרבה מגרסה ישנה. הדף מרענן את עצמו,
+    // וברגע שנוח לו — לא באמצע הקלדה ולא כשחלון פתוח.
+    for (const client of await self.clients.matchAll({ type: 'window' })) {
+      client.postMessage({ type: 'sw-updated' });
+    }
   })());
 });
 

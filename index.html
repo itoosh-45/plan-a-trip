@@ -39,7 +39,40 @@
   await boot();
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => { /* אופליין יופעל בטעינה הבאה */ });
+    // רענון שלא מוחק עבודה: מחכה לרגע שאין בו חלון פתוח ואין שדה בפוקוס.
+    let reloading = false;
+    const reloadWhenIdle = () => {
+      if (reloading) return;
+      const busy = document.querySelector('.sheet-backdrop')
+        || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+      if (busy) { setTimeout(reloadWhenIdle, 3000); return; }
+      reloading = true;
+      location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data?.type === 'sw-updated') reloadWhenIdle();
+    });
+
+    // רשת ביטחון: גרסה חדשה שהשתלטה על הדף בלי שההודעה הגיעה. בהתקנה
+    // ראשונה אין controller קודם, ואז אין מה לרענן — הדף כבר טרי.
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController) reloadWhenIdle();
+    });
+
+    navigator.serviceWorker
+      // updateViaCache:'none' — sw.js עצמו לעולם לא מוגש מהמטמון של הדפדפן,
+      // ולכן בדיקת העדכון רואה גרסה חדשה כבר בפתיחה הראשונה שאחרי ההעלאה.
+      .register('./sw.js', { updateViaCache: 'none' })
+      .then(reg => {
+        // אפליקציה שנשארת פתוחה ימים לא מקבלת בדיקת עדכון מעצמה. חזרה
+        // מהרקע היא הרגע הטבעי לבדוק, והבדיקה שקטה ונכשלת בלי רעש.
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) reg.update().catch(() => {});
+        });
+      })
+      .catch(() => { /* אופליין יופעל בטעינה הבאה */ });
   }
 </script>
 </body>

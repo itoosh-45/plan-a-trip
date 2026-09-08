@@ -48,7 +48,7 @@ export default async function () {
       .filter(rel => !sw.includes(`'${rel}'`))
       .sort();
     assertEqual(missing, [], 'מודולים שאינם נשמרים למטמון ולכן ישברו אופליין');
-    assertTrue(index.includes("navigator.serviceWorker.register('./sw.js')"), 'ה-Service Worker אינו נרשם');
+    assertTrue(index.includes("register('./sw.js'"), 'ה-Service Worker אינו נרשם');
   });
 
   s.test('index.html אינו טוען דבר מהאינטרנט', async () => {
@@ -73,6 +73,20 @@ export default async function () {
       src.includes('url.origin !== self.location.origin'),
       'בקשות חיצוניות אינן מוחרגות — שער ישן עלול להיות מוגש כאילו הוא טרי'
     );
+  });
+
+  s.test('גרסה חדשה מודיעה לדף, והדף יודע לרענן את עצמו', async () => {
+    const [sw, index] = await Promise.all([text('../sw.js'), text('../index.html')]);
+    assertTrue(sw.includes("postMessage({ type: 'sw-updated' })"),
+      'ה-Service Worker אינו מודיע על גרסה חדשה');
+    assertTrue(sw.includes('if (!stale.length) return;'),
+      'התקנה ראשונה תגרור רענון מיותר');
+    assertTrue(index.includes("'sw-updated'") && index.includes('location.reload()'),
+      'הדף אינו מרענן את עצמו כשמגיעה גרסה חדשה');
+    assertTrue(index.includes("updateViaCache: 'none'"),
+      'sw.js עלול להיות מוגש מהמטמון של הדפדפן, והעדכון יתעכב');
+    assertTrue(index.includes('.sheet-backdrop'),
+      'הרענון אינו ממתין לסגירת חלון פתוח');
   });
 
   await s.done();
