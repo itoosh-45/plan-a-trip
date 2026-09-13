@@ -16,6 +16,7 @@ import { refresh, setActiveTrip, navigate } from '../app.js';
 import { openTripWizard } from '../onboarding.js';
 import { openSheetsWizard } from '../sheets-setup.js';
 import { INTRO_LEAD, introPoints } from './no-trip.js';
+import { openWelcome } from '../welcome.js';
 
 const CATEGORY_ICONS = [
   'restaurant', 'ride', 'lodging', 'attraction', 'shopping', 'flight',
@@ -894,7 +895,13 @@ export async function mount(host, tripId) {
     ],
   ));
 
-  host.append(section('מה אפשר לעשות כאן', INTRO_LEAD, [introPoints()]));
+  host.append(section('מה אפשר לעשות כאן', INTRO_LEAD, [
+    introPoints(),
+    el('button', {
+      class: 'btn btn-tertiary btn-block', style: 'margin-block-start:14px',
+      text: 'הצג שוב את מסכי הפתיחה', onClick: () => openWelcome(),
+    }),
+  ]));
 
   host.append(await sheetsSection());
 
