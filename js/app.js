@@ -5,6 +5,7 @@ import * as rates from './rates.js';
 import * as cur from './currencies.js';
 import * as backup from './backup.js';
 import * as sheets from './sheets.js';
+import { maybeOpenWelcome } from './welcome.js';
 
 // חמישה טאבים. התוויות קצרות בכוונה — ברוחב טלפון תווית בת שתי מילים
 // נשברת לשתי שורות ומעוותת את גובה הסרגל.
@@ -183,6 +184,7 @@ export async function boot() {
   await migrate.recolorCategories();
   await migrate.dropLegacyGearTasks();
   if (!report.skipped && report.trips) toast('הנתונים הקיימים הותאמו למבנה החדש', 'success');
+  await maybeOpenWelcome();
   document.addEventListener('data:changed', onDataChanged);
   window.addEventListener('online',  () => { toast('חזרנו לרשת', 'success'); autoRefreshRates(); });
   window.addEventListener('offline', () => toast('אין רשת. האפליקציה ממשיכה לעבוד.', 'warning'));
