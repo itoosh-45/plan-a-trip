@@ -1,5 +1,5 @@
 // מטמון האפליקציה. שינוי המספר כאן מפיל את המטמון הישן בהתקנה הבאה.
-const CACHE = 'trip-planner-v25';
+const CACHE = 'trip-planner-v17';
 
 const SHELL = [
   './',
@@ -15,24 +15,14 @@ const SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
-  './img/welcome/wizard-step1.webp',
-  './img/welcome/date-range.webp',
-  './img/welcome/catalog-pick.webp',
-  './img/welcome/prep-list.webp',
-  './img/welcome/plan-days.webp',
-  './img/welcome/plan-segments.webp',
-  './img/welcome/expense-add.webp',
-  './img/welcome/summary-budget.webp',
   './js/app.js',
   './js/db.js',
   './js/ui.js',
   './js/icons.js',
-  './js/daterange.js',
   './js/trips.js',
   './js/itinerary.js',
   './js/expenses.js',
   './js/money.js',
-  './js/budgets.js',
   './js/rates.js',
   './js/currencies.js',
   './js/prep.js',
@@ -42,7 +32,6 @@ const SHELL = [
   './js/backup.js',
   './js/migrate.js',
   './js/onboarding.js',
-  './js/welcome.js',
   './js/sheets.js',
   './js/sheets-setup.js',
   './js/screens/no-trip.js',
@@ -62,27 +51,12 @@ self.addEventListener('install', event => {
   })());
 });
 
-/**
- * החלפת גרסה. הדף שפתוח באותו רגע נטען מהמטמון הישן, ולכן אחרי שהמטמון
- * הוחלף צריך לטעון אותו מחדש — אחרת המשתמש ממשיך לראות את הגרסה הקודמת עד
- * הפעם הבאה שהוא סוגר ופותח את האפליקציה, ולפעמים גם אז.
- *
- * קיומו של מטמון ישן הוא ההבדל בין עדכון להתקנה ראשונה: בהתקנה ראשונה הדף
- * זה עתה נטען מהרשת, ואין שום סיבה לרענן אותו.
- */
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    const stale = (await caches.keys()).filter(key => key !== CACHE);
-    for (const key of stale) await caches.delete(key);
-    await self.clients.claim();
-    if (!stale.length) return;
-
-    // ההודעה, ולא client.navigate: ניווט יזום מה-SW סוגר את החלון בחלק
-    // מהדפדפנים, וחלון שנסגר גרוע בהרבה מגרסה ישנה. הדף מרענן את עצמו,
-    // וברגע שנוח לו — לא באמצע הקלדה ולא כשחלון פתוח.
-    for (const client of await self.clients.matchAll({ type: 'window' })) {
-      client.postMessage({ type: 'sw-updated' });
+    for (const key of await caches.keys()) {
+      if (key !== CACHE) await caches.delete(key);
     }
+    await self.clients.claim();
   })());
 });
 
