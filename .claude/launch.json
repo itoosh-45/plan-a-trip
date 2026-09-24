@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "trip-planner",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "dev-server.py",
+        "8124"
+      ],
+      "port": 8124
+    }
+  ]
+}

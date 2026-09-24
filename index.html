@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="טיול ותקציב">
+<meta name="theme-color" content="#FCFCFC">
+<meta name="robots" content="noindex, nofollow">
+<title>תכנון טיול ותקציב</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="stylesheet" href="./css/tokens.css">
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+<header id="topbar"></header>
+<main id="screen"></main>
+<div id="toasts"></div>
+<nav id="nav" aria-label="ניווט ראשי"></nav>
+
+<script src="./vendor/chart.umd.js"></script>
+<script src="./vendor/xlsx.full.min.js"></script>
+<script type="module">
+  import { boot, registerScreen } from './js/app.js';
+  import { mount as prepMount } from './js/screens/prep.js';
+  import { mount as planMount } from './js/screens/plan.js';
+  import { mount as expensesMount } from './js/screens/expenses.js';
+  import { mount as summaryMount } from './js/screens/summary.js';
+  import { mount as settingsMount } from './js/screens/settings.js';
+
+  registerScreen('prep', prepMount);
+  registerScreen('plan', planMount);
+  registerScreen('expenses', expensesMount);
+  registerScreen('summary', summaryMount);
+  registerScreen('settings', settingsMount);
+  await boot();
+
+  if ('serviceWorker' in navigator) {
+    // רענון שלא מוחק עבודה: מחכה לרגע שאין בו חלון פתוח ואין שדה בפוקוס.
+    let reloading = false;
+    const reloadWhenIdle = () => {
+      if (reloading) return;
+      const busy = document.querySelector('.sheet-backdrop')
+        || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+      if (busy) { setTimeout(reloadWhenIdle, 3000); return; }
+      reloading = true;
+      location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data?.type === 'sw-updated') reloadWhenIdle();
+    });
+
+    // רשת ביטחון: גרסה חדשה שהשתלטה על הדף בלי שההודעה הגיעה. בהתקנה
+    // ראשונה אין controller קודם, ואז אין מה לרענן — הדף כבר טרי.
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController) reloadWhenIdle();
+    });
+
+    navigator.serviceWorker
+      // updateViaCache:'none' — sw.js עצמו לעולם לא מוגש מהמטמון של הדפדפן,
+      // ולכן בדיקת העדכון רואה גרסה חדשה כבר בפתיחה הראשונה שאחרי ההעלאה.
+      .register('./sw.js', { updateViaCache: 'none' })
+      .then(reg => {
+        // אפליקציה שנשארת פתוחה ימים לא מקבלת בדיקת עדכון מעצמה. חזרה
+        // מהרקע היא הרגע הטבעי לבדוק, והבדיקה שקטה ונכשלת בלי רעש.
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) reg.update().catch(() => {});
+        });
+      })
+      .catch(() => { /* אופליין יופעל בטעינה הבאה */ });
+  }
+</script>
+</body>
+</html>
