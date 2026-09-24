@@ -50,66 +50,6 @@ export function sheet({ title, body, actions = [] }) {
   return { close, panel };
 }
 
-/**
- * שדות חובה.
- *
- * באפליקציה הזו כמעט הכול רשות — טיול נוצר משם בלבד, וכל השאר אפשר להשלים
- * אחר כך. כדי שזה יהיה גלוי ולא סוד, יש בדיוק סימן אחד: כוכבית אדומה קטנה
- * ליד התווית של שדה חובה. הסימן לא בא לבד — requiredNote הוא המקרא שלו,
- * והוא גם כפתור: לחיצה עליו מדליקה את שדות החובה עצמם.
- */
-export function requiredStar() {
-  return el('span', { class: 'req', role: 'img', 'aria-label': 'שדה חובה', text: '*' });
-}
-
-export function fieldLabel(text, { required = false } = {}) {
-  return el('label', { class: 'field-label' }, [text, required ? requiredStar() : null]);
-}
-
-/** תווית מעל פקד. required מסמן את השורה, את התווית ואת הפקד עצמו. */
-export function fieldRow(label, node, { required = false } = {}) {
-  if (required && ['INPUT', 'SELECT', 'TEXTAREA'].includes(node.tagName)) {
-    node.setAttribute('aria-required', 'true');
-  }
-  return el('div', { class: 'field-row', 'data-required': required ? '' : null }, [
-    fieldLabel(label, { required }),
-    node,
-  ]);
-}
-
-const isEmptyRow = row => {
-  const control = row.querySelector('input, select, textarea');
-  if (control) return !String(control.value).trim();
-  // פקד שאינו שדה טקסט — לוח התאריכים — מדווח על עצמו
-  return Boolean(row.querySelector('[data-empty]'));
-};
-
-/**
- * מדליק לרגע את שדות החובה שבטופס. onlyEmpty מצמצם לאלה שבאמת חסרים, וזה
- * מה שנקרא אחרי שמירה שנכשלה: הודעת השגיאה אומרת מה חסר, וההבהוב אומר איפה.
- */
-export function flashRequired(from, { onlyEmpty = false } = {}) {
-  const scope = from?.closest?.('.sheet') || from || document;
-  const rows = [...scope.querySelectorAll('[data-required]')]
-    .filter(row => !onlyEmpty || isEmptyRow(row));
-  for (const row of rows) {
-    row.classList.remove('req-flash');
-    void row.offsetWidth;   // בלי זה אנימציה שרצה כרגע לא מתחילה מחדש
-    row.classList.add('req-flash');
-    setTimeout(() => row.classList.remove('req-flash'), 1600);
-  }
-  return rows.length;
-}
-
-/** המקרא של הכוכבית. לחיצה עליו מראה בדיוק אילו שדות בטופס הם חובה. */
-export function requiredNote(text) {
-  const note = el('button', {
-    type: 'button', class: 'req-note',
-    onClick: () => flashRequired(note),
-  }, [requiredStar(), el('span', { text })]);
-  return note;
-}
-
 export function toast(msg, kind = '') {
   const host = document.getElementById('toasts');
   const node = el('div', { class: `toast ${kind}`.trim(), text: msg, role: 'status' });
@@ -237,32 +177,11 @@ export function datesBetween(fromIso, toIso) {
   return out;
 }
 
-const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
-
-/**
- * המרה בין שני מטבעות דרך השקל, לפי שערים מול השקל. אין שער לאחד מהם —
- * מוחזר null, ולעולם לא 1:1: המרה שקרית גרועה מהיעדר המרה.
- */
-export function convertAmount(amount, fromRate, toRate) {
-  const n = Number(amount);
-  if (!Number.isFinite(n) || !fromRate || !toRate) return null;
-  return round2((n * fromRate) / toRate);
-}
-
 /**
  * שדה סכום עם דרופדאון מטבע לצדו. מוחזר יחד עם read() כדי שאף מסך לא יצטרך
  * לדעת איך השדה בנוי — זו הצורה היחידה של הזנת סכום באפליקציה.
- *
- * convertTo הוא מטבע היעד, בדרך כלל מטבע הטיול. כשנבחר מטבע אחר — למשל שקל
- * בטיול שמתנהל בבאהט — השדה מראה בזמן אמת כמה זה במטבע היעד ולפי איזה שער,
- * ומציע להמיר בלחיצה אחת. השער הוא השער השמור האמיתי; מטבע שאין לו שער אומר
- * זאת במקום לנחש.
- *
- * fx הוא מפת שערים מול השקל ({ THB: 0.1167 }), כפי ש-rates.rateMap מחזיר.
  */
-export function amountField({
-  amount = '', currency = 'ILS', currencies = ['ILS'], convertTo = null, fx = {},
-} = {}) {
+export function amountField({ amount = '', currency = 'ILS', currencies = ['ILS'] } = {}) {
   const value = el('input', {
     class: 'field', type: 'number', inputmode: 'decimal', step: '0.01',
     value: amount === null || amount === undefined ? '' : amount, 'aria-label': 'סכום',
@@ -274,68 +193,13 @@ export function amountField({
     value: c, selected: c === currency, text: `${currencySymbol(c)} · ${c}`,
   })));
 
-  const target = (convertTo || '').toUpperCase();
-  const rateOf = code => (code === 'ILS' ? (fx.ILS ?? 1) : fx[code] ?? null);
-  const inTarget = (n, from = pick.value) => convertAmount(n, rateOf(from), rateOf(target));
-
-  const text = el('span');
-  const convertBtn = el('button', {
-    type: 'button', class: 'link-btn', text: `המרה ל-${currencySymbol(target) || target}`,
-    onClick: () => {
-      const converted = inTarget(value.value);
-      if (converted === null) return;
-      value.value = converted;
-      pick.value = target;
-      update();
-    },
-  });
-  const note = el('div', { class: 'amount-conv' }, [text, convertBtn]);
-
-  /** שורת ההמרה נדלקת רק כשיש באמת המרה להראות — מטבע היעד עצמו שקט. */
-  function update() {
-    const from = pick.value;
-    if (!target || from === target) { note.hidden = true; return; }
-    note.hidden = false;
-
-    const rate = inTarget(1, from);
-    if (rate === null) {
-      text.textContent = `אין שער שמור ל-${from} — לא ניתן להמיר ל-${target}. אפשר להזין שער בהגדרות.`;
-      convertBtn.hidden = true;
-      return;
-    }
-
-    const typed = value.value === '' ? null : inTarget(value.value, from);
-    text.textContent = typed === null
-      ? `1 ${currencySymbol(from)} = ${rate} ${currencySymbol(target)} — לפי השער השמור`
-      : `≈ ${fmtMoney(typed, target)} · 1 ${currencySymbol(from)} = ${rate} ${currencySymbol(target)}`;
-    convertBtn.hidden = typed === null;
-  }
-
-  value.addEventListener('input', update);
-  pick.addEventListener('change', update);
-  update();
-
   return {
-    node: el('div', {}, [
-      el('div', { style: 'display:flex; gap:8px' }, [value, pick]),
-      note,
-    ]),
+    node: el('div', { style: 'display:flex; gap:8px' }, [value, pick]),
     input: value,
     read: () => ({
       amount: value.value === '' ? undefined : Number(value.value),
       currency: pick.value,
     }),
-    /**
-     * הסכום במטבע מבוקש — לשדות שנשמרים כמספר במטבע הטיול ואין להם מטבע
-     * משלהם. null פירושו שאין שער ולכן אין המרה.
-     */
-    readIn: (code = target) => {
-      if (value.value === '') return undefined;
-      const to = (code || '').toUpperCase();
-      const n = Number(value.value);
-      if (!to || pick.value === to) return n;
-      return convertAmount(n, rateOf(pick.value), rateOf(to));
-    },
   };
 }
 

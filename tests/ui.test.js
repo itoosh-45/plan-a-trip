@@ -3,7 +3,6 @@ import { ICONS } from '../js/icons.js';
 import {
   icon, el, fmtDate, fmtDateRange, fmtMoneyHtml, nightsBetween, datesBetween,
   fmtDayLabel, fmtDays, startOfWeek, ilsText, ilsNote, ilsPairNote,
-  fieldRow, requiredNote, flashRequired, amountField, convertAmount,
 } from '../js/ui.js';
 import { symbol, NAMES } from '../js/currencies.js';
 
@@ -119,116 +118,6 @@ export default async function () {
     assertTrue(nums[0].textContent.includes('400') && nums[1].textContent.includes('2,000'),
       [...nums].map(n => n.textContent).join(' | '));
     assertEqual(ilsPairNote(100, 500, 'ILS', 1), null);
-  });
-
-  s.test('שדה חובה מסומן בכוכבית אחת, ושדה רשות לא מסומן כלל', () => {
-    const must = fieldRow('שם הטיול', el('input', { class: 'field' }), { required: true });
-    const may = fieldRow('מדינה', el('input', { class: 'field' }));
-    assertEqual(must.querySelectorAll('.req').length, 1);
-    assertEqual(must.hasAttribute('data-required'), true);
-    assertEqual(must.querySelector('input').getAttribute('aria-required'), 'true');
-    assertEqual(may.querySelectorAll('.req').length, 0, 'שדה רשות קיבל סימון חובה');
-    assertEqual(may.hasAttribute('data-required'), false);
-  });
-
-  s.test('לחיצה על מקרא הכוכבית מדליקה בדיוק את שדות החובה', () => {
-    const form = el('div', { class: 'sheet' }, [
-      requiredNote('רק שדה עם כוכבית הוא חובה'),
-      fieldRow('שם', el('input', { class: 'field' }), { required: true }),
-      fieldRow('הערה', el('input', { class: 'field' })),
-    ]);
-    document.body.append(form);
-    form.querySelector('.req-note').click();
-    assertEqual(form.querySelectorAll('.req-flash').length, 1);
-    assertEqual(form.querySelector('.req-flash').hasAttribute('data-required'), true);
-    form.remove();
-  });
-
-  s.test('אחרי שמירה שנכשלה מודגשים רק שדות החובה שנשארו ריקים', () => {
-    const filled = el('input', { class: 'field', value: 'תאילנד' });
-    const empty = el('input', { class: 'field' });
-    const form = el('div', { class: 'sheet' }, [
-      fieldRow('שם', filled, { required: true }),
-      fieldRow('יעד', empty, { required: true }),
-    ]);
-    document.body.append(form);
-    assertEqual(flashRequired(form, { onlyEmpty: true }), 1);
-    assertEqual([...form.querySelectorAll('.req-flash')][0].contains(empty), true);
-    form.remove();
-  });
-
-  s.test('לוח תאריכים ריק נספר כשדה חובה חסר, אף שאין בו input', () => {
-    const cal = el('div', { class: 'cal', 'data-empty': '' });
-    const form = el('div', { class: 'sheet' }, [
-      fieldRow('טווח התאריכים', cal, { required: true }),
-    ]);
-    document.body.append(form);
-    assertEqual(flashRequired(form, { onlyEmpty: true }), 1);
-    cal.removeAttribute('data-empty');
-    assertEqual(flashRequired(form, { onlyEmpty: true }), 0, 'לוח שנבחר בו טווח עדיין נספר כריק');
-    form.remove();
-  });
-
-  // ---- הזנת סכום והמרה למטבע הטיול ----
-
-  // שער מול השקל: 1 THB = 0.1167 ₪, 1 USD = 3.7 ₪
-  const FX = { ILS: 1, THB: 0.1167, USD: 3.7 };
-  const field = over => amountField({
-    currencies: ['ILS', 'THB', 'USD'], convertTo: 'THB', fx: FX, ...over,
-  });
-  const convLine = node => node.querySelector('.amount-conv').textContent;
-
-  s.test('convertAmount ממיר דרך השקל, ובלי שער מחזיר null ולא 1:1', () => {
-    assertEqual(convertAmount(150, 1, 0.1167), 1285.35, 'שקלים לבאהט');
-    assertEqual(convertAmount(100, 3.7, 0.1167), 3170.52, 'דולר לבאהט דרך השקל');
-    assertEqual(convertAmount(100, 3.7, 3.7), 100, 'אותו מטבע אינו משנה סכום');
-    assertEqual(convertAmount(100, null, 0.1167), null, 'בלי שער מקור');
-    assertEqual(convertAmount(100, 3.7, null), null, 'בלי שער יעד');
-  });
-
-  s.test('סכום בשקלים בטיול בבאהט מוצג מומר, עם השער שלפיו', () => {
-    const f = field({ amount: 150, currency: 'ILS' });
-    assertTrue(convLine(f.node).includes('1,285'), convLine(f.node));
-    assertTrue(convLine(f.node).includes('8.57'), 'השער עצמו אינו מוצג');
-    assertEqual(f.readIn('THB'), 1285.35);
-    assertEqual(f.read(), { amount: 150, currency: 'ILS' }, 'הקריאה הרגילה משנה את מה שהוזן');
-  });
-
-  s.test('כפתור ההמרה כותב את הסכום במטבע הטיול ומחליף את הבורר', () => {
-    const f = field({ amount: 150, currency: 'ILS' });
-    f.node.querySelector('.amount-conv .link-btn').click();
-    assertEqual(f.read(), { amount: 1285.35, currency: 'THB' });
-    assertEqual(f.node.querySelector('.amount-conv').hidden, true, 'אין מה להמיר, והשורה נשארה');
-  });
-
-  s.test('סכום שכבר במטבע הטיול אינו מקבל שורת המרה', () => {
-    const f = field({ amount: 500, currency: 'THB' });
-    assertEqual(f.node.querySelector('.amount-conv').hidden, true);
-    assertEqual(f.readIn('THB'), 500);
-  });
-
-  s.test('מטבע בלי שער אומר זאת, ואינו ממיר 1:1', () => {
-    const f = field({ amount: 100, currency: 'EUR', currencies: ['ILS', 'EUR', 'THB'] });
-    assertTrue(convLine(f.node).includes('אין שער שמור'), convLine(f.node));
-    assertEqual(f.node.querySelector('.amount-conv .link-btn').hidden, true, 'הוצע להמיר בלי שער');
-    assertEqual(f.readIn('THB'), null, 'סכום הומר בלי שער');
-  });
-
-  s.test('שדה ריק אינו ממציא סכום', () => {
-    const f = field({ currency: 'ILS' });
-    assertEqual(f.readIn('THB'), undefined);
-    assertEqual(f.read().amount, undefined);
-    assertTrue(convLine(f.node).includes('1 ₪'), 'השער עצמו מוצג גם לפני שהוקלד סכום');
-  });
-
-  s.test('החלפת המטבע בבורר מעדכנת את שורת ההמרה', () => {
-    const f = field({ amount: 100, currency: 'THB' });
-    const pick = f.node.querySelector('select');
-    pick.value = 'USD';
-    pick.dispatchEvent(new Event('change'));
-    assertEqual(f.node.querySelector('.amount-conv').hidden, false);
-    assertEqual(f.readIn('THB'), 3170.52);
-    assertTrue(convLine(f.node).includes('31.71'), convLine(f.node));
   });
 
   await s.done();
