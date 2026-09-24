@@ -1,23 +1,14 @@
 import * as db from './db.js';
 import * as catalog from './catalog.js';
 
-/** ארבע רשימות קבועות, וכולן גלויות תמיד. אין מצב שמסתיר תוכן. */
-export const STAGES = {
-  before: 'לפני הטיול', during: 'במהלך השהייה', after: 'בחזרה', gear: 'ציוד מיוחד',
-};
+/** שלוש קטגוריות, וכולן גלויות תמיד. אין מצב שמסתיר תוכן. */
+export const STAGES = { before: 'לפני הטיול', during: 'במהלך השהייה', after: 'בחזרה' };
 
 /** שלוש רמות דחיפות, מהגבוהה לנמוכה. */
 export const URGENCY = { critical: 'קריטי', important: 'חשוב', normal: 'רגיל' };
 
-/**
- * הקטלוג נכתב בחמישה שלבים. "בדרך" (יום הטיסה) שייך להיערכות שלפני הטיול.
- * "ציוד מיוחד" — ציוד לטרקים וציוד סקי — עומד בפני עצמו: הוא לא הכנה
- * לוגיסטית, ורוב הטיולים לא נוגעים בו בכלל.
- */
-export const STAGE_BY_PHASE = {
-  'לפני': 'before', 'בדרך': 'before', 'בשהות': 'during', 'בחזרה': 'after',
-  'ציוד מיוחד': 'gear',
-};
+/** הקטלוג נכתב בארבעה שלבים. "בדרך" (יום הטיסה) שייך להיערכות שלפני הטיול. */
+export const STAGE_BY_PHASE = { 'לפני': 'before', 'בדרך': 'before', 'בשהות': 'during', 'בחזרה': 'after' };
 export const URGENCY_BY_PRIORITY = { 'חובה': 'critical', 'רלוונטי': 'important', 'נוחות': 'normal' };
 
 /** הקטגוריה של משימה שלא הגיעה מהקטלוג, או שהמדור שלה כבר לא קיים בו. */
@@ -188,11 +179,7 @@ export async function removeTask(tripId, taskId) {
   await db.remove(db.STORES.prepTasks, taskId);
 }
 
-/**
- * מוסיף פריטים מהקטלוג כמשימות עצמאיות. מדלג על catalogId שכבר קיים לטיול.
- * פריט שנושא stage משלו קובע לעצמו — כך רשימה מיובאת ששויכה לשלב מסוים
- * נוחתת שם, גם כשהבורר נפתח מרשימה אחרת.
- */
+/** מוסיף פריטים מהקטלוג כמשימות עצמאיות. מדלג על catalogId שכבר קיים לטיול. */
 export async function addFromCatalog(tripId, catalogItems, stage) {
   const already = await usedCatalogIds(tripId);
   const toAdd = catalogItems.filter(c => !already.has(c.id));
@@ -201,7 +188,7 @@ export async function addFromCatalog(tripId, catalogItems, stage) {
   return db.bulkPut(db.STORES.prepTasks, toAdd.map(c => ({
     tripId,
     catalogId: c.id,
-    stage: c.stage || stage || STAGE_BY_PHASE[c.phase] || 'before',
+    stage: stage || STAGE_BY_PHASE[c.phase] || 'before',
     category: c.section || OTHER,
     urgency: URGENCY_BY_PRIORITY[c.priority] || 'normal',
     title: c.text,

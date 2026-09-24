@@ -13,8 +13,8 @@ export default async function () {
     assertTrue(a === b, 'הקריאה השנייה לא הוחזרה מהמטמון');
   });
 
-  s.test('phases מחזיר את 5 השלבים בסדר הקבוע', async () => {
-    assertEqual(await catalog.phases(), ['לפני', 'בדרך', 'בשהות', 'בחזרה', 'ציוד מיוחד']);
+  s.test('phases מחזיר את 4 השלבים בסדר הקבוע', async () => {
+    assertEqual(await catalog.phases(), ['לפני', 'בדרך', 'בשהות', 'בחזרה']);
   });
 
   s.test('sections מחזיר מדורים ייחודיים לשלב נתון', async () => {
@@ -53,17 +53,17 @@ export default async function () {
 
   s.test('הסתרה מורידה פריט מכל מסלולי הניווט בקטלוג', async () => {
     await catalog.setHidden([]);
-    const before = (await catalog.byTopic('ציוד מיוחד', 'ציוד סקי', 'הגנה')).map(x => x.text);
+    const before = (await catalog.byTopic('לפני', 'ציוד סקי', 'הגנה')).map(x => x.text);
     assertTrue(before.includes('קסדה'), 'הקסדה חסרה מהקטלוג מלכתחילה');
     const helmet = (await catalog.load()).find(x => x.text === 'קסדה');
     await catalog.hide(helmet.id);
-    const after = (await catalog.byTopic('ציוד מיוחד', 'ציוד סקי', 'הגנה')).map(x => x.text);
+    const after = (await catalog.byTopic('לפני', 'ציוד סקי', 'הגנה')).map(x => x.text);
     assertTrue(!after.includes('קסדה'), 'הפריט המוסתר עדיין מוצג');
     const hits = (await catalog.search('קסדה')).map(x => x.text);
     assertTrue(!hits.includes('קסדה'), 'הפריט המוסתר עדיין נמצא בחיפוש');
     assertTrue(hits.includes('כובע מתחת לקסדה'), 'החיפוש הפסיק להחזיר פריטים שלא הוסתרו');
     await catalog.unhide(helmet.id);
-    assertTrue((await catalog.byTopic('ציוד מיוחד', 'ציוד סקי', 'הגנה')).map(x => x.text).includes('קסדה'),
+    assertTrue((await catalog.byTopic('לפני', 'ציוד סקי', 'הגנה')).map(x => x.text).includes('קסדה'),
       'הפריט לא חזר לקטלוג');
   });
 
@@ -74,12 +74,10 @@ export default async function () {
     await catalog.setHidden([]);
   });
 
-  s.test('שני מדורי הציוד חיים בשלב "ציוד מיוחד" ולא ב"לפני"', async () => {
-    const sections = await catalog.sections('ציוד מיוחד');
-    assertEqual(sections, ['ציוד לטרקים', 'ציוד סקי']);
-    const beforeSections = await catalog.sections('לפני');
-    assertTrue(!beforeSections.includes('ציוד לטרקים'), 'ציוד לטרקים נשאר בשלב לפני');
-    assertTrue(!beforeSections.includes('ציוד סקי'), 'ציוד סקי נשאר בשלב לפני');
+  s.test('שני המדורים החדשים קיימים עם התכולה שלהם', async () => {
+    const sections = await catalog.sections('לפני');
+    assertTrue(sections.includes('ציוד לטרקים'), 'ציוד לטרקים חסר');
+    assertTrue(sections.includes('ציוד סקי'), 'ציוד סקי חסר');
     const trek = (await catalog.load()).filter(x => x.section === 'ציוד לטרקים');
     const ski = (await catalog.load()).filter(x => x.section === 'ציוד סקי');
     assertEqual(trek.length, 76);
@@ -123,26 +121,6 @@ export default async function () {
     const sections = new Set((await catalog.load()).map(x => x.section));
     const left = new Set((await catalog.visible()).map(x => x.section));
     assertEqual([...sections].filter(s2 => !left.has(s2)), []);
-  });
-
-  s.test('outline מחזיר מדורים ונושאים בסדר הקטלוג, בלי מוסתרים', async () => {
-    const sections = await catalog.outline(['לפני']);
-    assertTrue(sections.length > 0, 'אין מדורים');
-    assertEqual(sections.map(x => x.section), await catalog.sections('לפני'));
-    assertEqual(
-      sections[0].topics.map(t => t.topic),
-      await catalog.topics('לפני', sections[0].section),
-    );
-    const hidden = await catalog.hiddenIds();
-    const all = sections.flatMap(x => x.topics.flatMap(t => t.items));
-    assertEqual(all.filter(i => hidden.has(i.id)), [], 'פריט מוסתר הגיע ל-outline');
-    assertTrue(all.every(i => i.phase === 'לפני'), 'פריט משלב אחר הגיע ל-outline');
-  });
-
-  s.test('outline בלי סינון שלב מכסה את כל הקטלוג הגלוי', async () => {
-    const sections = await catalog.outline();
-    const count = sections.reduce((sum, x) => sum + x.topics.reduce((n, t) => n + t.items.length, 0), 0);
-    assertEqual(count, (await catalog.visible()).length);
   });
 
   await s.done();

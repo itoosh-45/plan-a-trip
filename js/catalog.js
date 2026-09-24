@@ -1,5 +1,4 @@
 import * as db from './db.js';
-import * as imported from './imported.js';
 
 const HIDDEN_KEY = 'catalogHidden';
 
@@ -16,22 +15,14 @@ export async function load() {
 
 let index = null;
 
-/**
- * מפת id -> פריט, לחיפוש חוזר בלי לסרוק את כל הקטלוג בכל קריאה. הקטלוג
- * המובנה מוטמן; הרשימות המיובאות נקראות בכל פעם, כי הן משתנות תוך כדי
- * ריצה והן שורה אחת במסד. המפה משמשת רק להעשרת משימות קיימות, ולכן
- * הרשימות המיובאות חייבות להיות בה — אחרת משימה שהגיעה מהן מאבדת קטגוריה.
- */
+/** מפת id -> פריט, לחיפוש חוזר בלי לסרוק 519 שורות בכל קריאה. */
 export async function byId() {
-  if (!index) index = new Map((await load()).map(item => [item.id, item]));
-  const extra = await imported.allItems();
-  if (!extra.length) return index;
-  const merged = new Map(index);
-  for (const item of extra) merged.set(item.id, item);
-  return merged;
+  if (index) return index;
+  index = new Map((await load()).map(item => [item.id, item]));
+  return index;
 }
 
-const PHASE_ORDER = ['לפני', 'בדרך', 'בשהות', 'בחזרה', 'ציוד מיוחד'];
+const PHASE_ORDER = ['לפני', 'בדרך', 'בשהות', 'בחזרה'];
 
 function uniqueInOrder(values) {
   const seen = new Set();
@@ -112,25 +103,6 @@ export async function topics(phase, section) {
 export async function byTopic(phase, section, topic) {
   const cat = await visible();
   return cat.filter(x => x.phase === phase && x.section === section && x.topic === topic);
-}
-
-/**
- * הקטלוג הגלוי כעץ שטוח לתצוגה: מדורים בסדר שבו הם מופיעים בקטלוג, וכל
- * מדור עם הנושאים שלו. זו הצורה שבורר הקטלוג מציג בבת אחת, במקום ניווט
- * במסכים. phases מצמצם לשלב מסוים; בלעדיו — כל הקטלוג.
- */
-export async function outline(phases = null) {
-  const cat = await visible();
-  const rows = phases ? cat.filter(x => phases.includes(x.phase)) : cat;
-  const sections = [];
-  for (const item of rows) {
-    let section = sections.find(s => s.section === item.section);
-    if (!section) { section = { section: item.section, topics: [] }; sections.push(section); }
-    let topic = section.topics.find(t => t.topic === item.topic);
-    if (!topic) { topic = { topic: item.topic, items: [] }; section.topics.push(topic); }
-    topic.items.push(item);
-  }
-  return sections;
 }
 
 export async function search(q) {

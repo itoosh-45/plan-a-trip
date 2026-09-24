@@ -38,14 +38,6 @@ html, body {
 
 /* מצב ריק: לא כותרת כרטיס, ולכן לא מתכווץ ל-12px אפור */
 .empty-title { font-size: var(--text-sm); font-weight: 600; margin-block-end: 4px; }
-/* המסך הראשון של משתמש חדש: הטקסט וזוג הכפתורים ממורכזים בכרטיס. */
-.empty-no-trip { text-align: center; }
-.empty-no-trip .empty-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-block-start: 14px;
-}
 
 /* בתוך כותרת קבוצה מתקפלת הכותרת יושבת בשורה, בלי מרווח משלה */
 .group-head .card-title { margin: 0; }
@@ -113,10 +105,6 @@ body {
 .btn-quiet     { background: var(--color-surface-2); color: var(--color-text); }
 .btn-danger    { background: transparent; color: var(--color-danger); border-color: var(--color-danger); }
 .btn-block     { width: 100%; }
-/* פעולה ראשית ברמת המסך: לא נמתחת לרוחב מלא, יושבת במרכז. */
-.btn-hero      { display: flex; width: 60%; margin-inline: auto; }
-/* כפתור מושבת מאבד את הבולטות שלו במקום להיעלם — הוא עדיין אומר מה יקרה. */
-.btn:disabled { opacity: 0.4; cursor: default; }
 
 .icon-btn {
   display: inline-flex;
@@ -187,12 +175,6 @@ body {
 .dim { color: var(--color-text-dim); font-weight: 400; }
 .hairline { border-block-start: 1px solid var(--color-hairline); }
 .num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; display: inline-block; }
-/* שורת ההמרה לשקלים יושבת מתחת לסכום, ולא לצדו: .num הוא inline-block,
-   ובלי זה שתי השורות היו נדבקות לאותה שורה. */
-.sub.ils { display: block; margin-block-start: 2px; }
-
-/* תו המטבע קטן ב-10% מהספרות שלצדו. יחסי, ולכן זה נכון גם ב-money-lg. */
-.cur { font-size: 0.9em; }
 /* סכום כסף תמיד bold. .num לבדו נשאר למספרים שאינם כסף. */
 .money { font-weight: 500; }
 .money-lg { font-size: var(--text-2xl); font-weight: 500; letter-spacing: var(--tracking-num); }
@@ -205,7 +187,7 @@ body {
 #nav {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: var(--color-surface);
   border-block-start: 1px solid var(--color-hairline);
   padding-block-end: env(safe-area-inset-bottom);
@@ -249,12 +231,11 @@ body {
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-block-end: 12px; }
 .sheet-title { font-size: var(--text-lg); font-weight: 600; letter-spacing: var(--tracking-head); margin: 0; }
 
-/* מעל החלונות (40): שגיאה שנזרקת מטופס בתוך חלון חייבת להיראות. */
 #toasts {
   position: fixed;
   inset-inline: var(--space-screen-x);
   inset-block-end: calc(var(--nav-height) + 16px + env(safe-area-inset-bottom));
-  z-index: 60;
+  z-index: 20;
   pointer-events: none;
 }
 .toast {
@@ -292,7 +273,6 @@ body {
   display: block;
   padding: 12px var(--space-screen-x) 0;
 }
-.topbar-logo { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; }
 .topbar-row { display: flex; align-items: center; gap: 8px; }
 /* בורר הטיול נשאר select נייטיבי, ומפסיק להיראות כמו שדה טופס. */
 .topbar-row .field {
@@ -305,133 +285,15 @@ body {
   letter-spacing: var(--tracking-head);
 }
 
-/* ---- שורת ההמרה מתחת לשדה סכום ---- */
-/* מה שהוקלד, כמה זה במטבע הטיול, ולפי איזה שער — בלי להתחרות בשדה עצמו. */
-.amount-conv {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-block-start: 4px;
-  font-size: var(--text-xs);
-  color: var(--color-text-dim);
-}
-.amount-conv[hidden] { display: none; }
-.amount-conv .link-btn { min-height: 32px; padding: 4px 6px; font-size: var(--text-xs); }
-.amount-conv .link-btn[hidden] { display: none; }
-
-/* ---- שדות חובה: כוכבית אחת, ומקרא שאפשר ללחוץ עליו ---- */
-/* קטנה ואדומה, בגוון האזהרה הרגיל. זה כל הסימון של "חייבים למלא". */
-.req {
-  color: var(--color-danger);
-  font-size: var(--text-11);
-  line-height: 1;
-  margin-inline-start: 3px;
-}
-.req-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  box-sizing: border-box;
-  margin-block-end: 12px;
-  padding: 9px 10px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--color-surface-2);
-  color: var(--color-text-dim);
-  font-family: inherit;
-  font-size: var(--text-xs);
-  text-align: start;
-  cursor: pointer;
-}
-.req-note .req { font-size: var(--text-sm); margin: 0; }
-
-/* ההבהוב שמצביע על שדות החובה. בלי אנימציה זה עדיין קו מתאר לזמן קצוב. */
-.req-flash {
-  border-radius: var(--radius-control);
-  outline: 2px solid var(--color-danger);
-  outline-offset: 3px;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .req-flash { animation: req-pulse 1.6s ease-out; }
-  @keyframes req-pulse {
-    0%, 100% { outline-color: transparent; }
-    12%, 62% { outline-color: var(--color-danger); }
-  }
-}
-
-/* ---- לוח בחירת טווח תאריכים ---- */
-/* לחיצה ראשונה = התחלה, שנייה = סיום, והטווח שביניהן נצבע ברצף אחד. */
-.cal {
-  width: 100%;
-  max-width: 340px;
+/* ---- שורת תאריכים: 75% מרוחב המסך, ממורכזת ---- */
+/* 75% מרוחב המסך, ולא מרוחב הכרטיס שמכיל אותה */
+.date-row {
+  width: min(var(--date-row-width), 100%);
   margin-inline: auto;
-}
-.cal-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
-.cal-month {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: var(--tracking-head);
-}
-.cal-week, .cal-row { display: grid; grid-template-columns: repeat(7, 1fr); }
-.cal-week {
-  margin-block-end: 2px;
-  font-size: var(--text-11);
-  color: var(--color-text-mute);
-  text-align: center;
-}
-.cal-day {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 1;
-  min-height: 40px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-family: inherit;
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  cursor: pointer;
-}
-.cal-day > span {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-}
-.cal-day.is-out { color: var(--color-text-mute); opacity: 0.5; }
-.cal-day:disabled { opacity: 0.3; cursor: default; }
-/* הרצף נצבע ברך; רק שני הקצוות נושאים מילוי מלא, והם גם מה שנבחר בפועל */
-.cal-day.is-in, .cal-day.is-start, .cal-day.is-end {
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-.cal-day.is-start { border-start-start-radius: 999px; border-end-start-radius: 999px; }
-.cal-day.is-end { border-start-end-radius: 999px; border-end-end-radius: 999px; }
-.cal-day.is-today > span { box-shadow: inset 0 0 0 1px var(--color-control-line); }
-.cal-day.is-start > span, .cal-day.is-end > span {
-  background: var(--color-accent);
-  color: #fff;
-  font-weight: 500;
-}
-.cal-day:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-.cal-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 32px;
-  font-size: var(--text-xs);
-  color: var(--color-text-dim);
-}
-.cal-status .link-btn { min-height: 32px; padding-block: 4px; }
+.date-row > * { flex: 1; min-width: 0; }
 
 /* ---- כרטיס טיול (מסך "טיולים" בהגדרות) ---- */
 .trip-card {
@@ -445,8 +307,8 @@ body {
   position: relative;
   background: var(--gradient-trip);
   color: #fff;
-  padding: 8px var(--space-card-p);
-  min-height: 52px;
+  padding: 20px var(--space-card-p);
+  min-height: 108px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -466,11 +328,10 @@ body {
 }
 .trip-card-edit {
   position: absolute;
-  inset-block-start: 9px;
-  inset-inline-end: 10px;
-  width: 30px;
-  height: 30px;
-  box-sizing: border-box;
+  inset-block-start: 12px;
+  inset-inline-end: 12px;
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -480,14 +341,11 @@ body {
   color: #fff;
   cursor: pointer;
 }
-/* אזור המגע נשאר 44px גם כשהכפתור מצויר קטן */
-.trip-card-edit::after { content: ''; position: absolute; inset: -7px; }
-.trip-card-edit svg { width: 17px; height: 17px; }
 .trip-card-currency {
   position: absolute;
-  inset-block-start: 12px;
-  inset-inline-end: 46px;
-  padding: 3px 9px;
+  inset-block-start: 58px;
+  inset-inline-end: 12px;
+  padding: 6px 12px;
   border-radius: var(--radius-control);
   background: rgba(0, 0, 0, 0.32);
   color: #fff;
@@ -496,14 +354,13 @@ body {
   letter-spacing: 0.04em;
 }
 .trip-card-body {
-  padding: 10px var(--space-card-p);
+  padding: var(--space-card-p);
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
-.trip-card-body .total { font-size: var(--text-2xl); font-weight: 500; line-height: 1.15;
-                          letter-spacing: var(--tracking-num); }
+.trip-card-body .total { font-size: var(--text-2xl); font-weight: 500; letter-spacing: var(--tracking-num); }
 .trip-card[aria-current="true"] { outline: 2px solid var(--color-accent); }
 
 /* ---- דחיפות ברשימת ההכנה ---- */
@@ -673,293 +530,4 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-/* ---- אשף החיבור לגוגל שיטס ---- */
-
-.wizard-list { margin: 0 0 10px; padding-inline-start: 20px; }
-.wizard-list li { margin-block-end: 6px; }
-
-/* "הצלחת אם" — הסימן שאפשר להתקדם, ולכן ירוק ולא אפור כמו הערת שוליים */
-.wizard-done {
-  margin: 10px 0 0;
-  padding: 8px 10px;
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--color-success) 12%, transparent);
-  font-size: var(--text-sm);
-}
-
-.wizard-warn {
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-
-.wizard-tip {
-  margin-block-start: 12px;
-  padding: 10px;
-  border-radius: var(--radius-control);
-  background: var(--color-surface-2);
-}
-
-/* טקסט שצריך להקליד או להעתיק מילה במילה — תמיד ltr, גם בתוך משפט עברי */
-.wizard-code {
-  padding: 8px 10px;
-  border-radius: var(--radius-control);
-  background: var(--color-surface-2);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--text-sm);
-  direction: ltr;
-  text-align: left;
-  overflow-wrap: anywhere;
-}
-
-.wizard-source {
-  direction: ltr;
-  text-align: left;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--text-11);
-  white-space: pre;
-}
-
-/* שתי האפשרויות שקל להתבלבל ביניהן בשלב 6, מסומנות במפורש */
-.wizard-pick {
-  margin-block-end: 8px;
-  padding: 10px;
-  border-radius: var(--radius-control);
-  border-inline-start: 3px solid var(--color-control-line);
-  background: var(--color-surface-2);
-}
-.wizard-pick.good { border-inline-start-color: var(--color-success); }
-.wizard-pick.bad  { border-inline-start-color: var(--color-danger); opacity: 0.75; }
-
-.wizard-reminder {
-  margin-block-end: 10px;
-  font-size: var(--text-11);
-  color: var(--color-text-mute);
-}
-
-/* ---- נקודות ההיכרות ---- */
-
-/* בלי אייקונים ובלי צבע — רק המונח המודגש. הכרטיס ממורכז, הרשימה לא. */
-.intro-points {
-  margin: 14px 0 0;
-  padding: 0;
-  list-style: none;
-  text-align: start;
-}
-.intro-points li {
-  margin-block-end: 8px;
-  font-size: var(--text-sm);
-  color: var(--color-text-dim);
-}
-.intro-points b { color: var(--color-text); font-weight: 600; }
-
-/* ---- מסך התכנון: סרגל הפקדים, קבוצות וימים ---- */
-
-.plan-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-block: 4px;
-}
-/* הצ׳יפס נגללים, ו"כווץ הכל" מוצמד לקצה כדי שלא ייעלם מחוץ למסך */
-.plan-toolbar-scroll {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-}
-.plan-collapse { flex: 0 0 auto; }
-.plan-toolbar-sep {
-  flex: 0 0 auto;
-  width: 1px;
-  height: 20px;
-  background: var(--color-hairline);
-}
-
-/* כותרת היעד יושבת מחוץ לקבוצות, ולכן היא מסומנת כדי שלא תיקרא כעוד קבוצה */
-.seg-header { border-inline-start: 3px solid var(--color-accent); }
-
-.day-head { min-height: 40px; }
-.day + .day {
-  margin-block-start: 10px;
-  padding-block-start: 10px;
-  border-block-start: 1px solid var(--color-hairline);
-}
-/* שורות היום נוגעות בקצה הכרטיס, כמו ברשימת ההכנה */
-.day-items { margin-inline: calc(var(--space-card-p) * -1); }
-
-.day-add {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-block-start: 8px;
-}
-.day-add .field, .day-add .grow { flex: 1; min-width: 0; }
-
-/* פעולה משנית בתוך שורה: טקסט בלבד, בלי משקל של כפתור */
-.link-btn {
-  flex: 0 0 auto;
-  min-height: var(--touch-min);
-  padding: 8px;
-  background: none;
-  border: 0;
-  font: inherit;
-  color: var(--color-accent);
-  cursor: pointer;
-}
-
-/* ---- בורר הקטלוג: רשימה אחת עם אינדקס מדורים דביק ---- */
-
-.catalog-index {
-  position: sticky;
-  inset-block-start: 0;
-  z-index: 1;
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-block: 10px;
-  background: var(--color-surface);
-}
-.catalog-index[hidden] { display: none; }
-
-/* הכותרת הראשונה אינה זקוקה לקו הפרדה — אין מעליה מה להפריד */
-.catalog-section:first-child { margin-block-start: 4px; padding-block-start: 0; border-block-start: 0; }
-.catalog-section {
-  margin-block: 18px 4px;
-  padding-block-start: 12px;
-  border-block-start: 1px solid var(--color-hairline);
-}
-.catalog-section-title {
-  font-size: var(--text-lg);
-  font-weight: 600;
-  letter-spacing: var(--tracking-head);
-}
-.catalog-topic {
-  margin-block: 12px 2px;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  letter-spacing: var(--tracking-head);
-  color: var(--color-text-mute);
-}
-.catalog-item {
-  width: 100%;
-  justify-content: space-between;
-  margin-block-start: 6px;
-  text-align: start;
-}
-
-/* ---- מסכי הפתיחה של כניסה ראשונה ---- */
-
-/* מעל הניווט (30) והחלונות (40), מתחת להודעות (60) */
-.welcome {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-bg);
-  padding-block: env(safe-area-inset-top) env(safe-area-inset-bottom);
-}
-
-.welcome-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px var(--space-screen-x);
-}
-/* שני צדי הכותרת שווים ברוחב, ולכן הנקודות יושבות במרכז גם כש"דלג" נעלם */
-.welcome-skip, .welcome-skip-slot { flex: 0 0 auto; min-width: 64px; }
-.welcome-skip {
-  background: none;
-  border-color: transparent;
-  color: var(--color-text-mute);
-  padding-inline: 0;
-  justify-content: start;
-}
-.welcome-skip-slot { min-height: var(--touch-min); }
-
-.welcome-dots { display: flex; gap: 6px; }
-.welcome-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-surface-2);
-}
-.welcome-dot[data-on] { background: var(--color-accent); }
-
-.welcome-body {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-inline: var(--space-screen-x);
-  padding-block: 8px 12px;
-}
-/* המסך הראשון: הטקסט ממורכז בכל הגובה, בלי כרטיס ובלי צילום */
-.welcome-body.welcome-center {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.welcome-title {
-  margin: 0 0 10px;
-  font-size: var(--text-2xl);
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: var(--tracking-head);
-}
-.welcome-title:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
-.welcome-lead {
-  margin: 0 0 10px;
-  font-size: var(--text-lg);
-  font-weight: 500;
-  letter-spacing: var(--tracking-head);
-}
-.welcome-text { margin: 0 0 10px; color: var(--color-text-dim); }
-
-.welcome-features { margin: 14px 0 0; padding: 0; list-style: none; }
-.welcome-feature {
-  display: flex;
-  gap: 10px;
-  padding-block: 10px;
-  border-block-start: 1px solid var(--color-hairline);
-}
-.welcome-feature:first-child { border-block-start: 0; padding-block-start: 0; }
-.welcome-feature-icon { flex: 0 0 auto; color: var(--color-accent); line-height: 0; padding-block-start: 2px; }
-.welcome-feature-term { font-size: var(--text-sm); font-weight: 600; margin-block-end: 2px; }
-.welcome-feature .welcome-text { margin: 0; }
-
-/* המסגרת שומרת מקום לצילום לפי יחס הצדדים שלו, כדי שהטקסט לא יזוז בטעינה */
-.welcome-shot {
-  margin-block-start: 14px;
-  overflow: hidden;
-  border-radius: var(--radius-card);
-  background: var(--color-surface-2);
-}
-.welcome-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
-
-.welcome-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px var(--space-screen-x) 12px;
-}
-.welcome-foot-end { display: flex; gap: 8px; }
-.welcome-next { min-width: 96px; }
-
-/* מעבר בין מסכים: רמז עדין בלבד, ומי שביקש פחות תנועה לא מקבל כלום */
-.welcome-body > * { animation: welcome-in 180ms ease-out both; }
-@keyframes welcome-in { from { opacity: 0; transform: translateY(4px); } }
-@media (prefers-reduced-motion: reduce) {
-  .welcome-body > * { animation: none; }
 }
