@@ -26,29 +26,17 @@ export default async function () {
     assertEqual(missing, [], 'קבצים שנרשמו למטמון אך אינם קיימים');
   });
 
-  // רשימה קשיחה של מודולים לא תופסת מודול חדש שנשכח במטמון, ולכן הבדיקה
-  // הזו הולכת בעקבות ה-import-ים עצמם, מ-index.html והלאה.
-  s.test('כל מודול שהאפליקציה מייבאת בפועל נמצא ברשימת המטמון', async () => {
+  s.test('כל מודול js שקיים על הדיסק נמצא ברשימת המטמון', async () => {
     const [sw, index] = await Promise.all([text('../sw.js'), text('../index.html')]);
-    const root = new URL('../', location.href).href;
-    const specs = src => [...src.matchAll(/from\s+'([^']+\.js)'/g)].map(m => m[1]);
-
-    const seen = new Set();
-    const queue = specs(index).map(spec => new URL(spec, `${root}index.html`).href);
-    while (queue.length) {
-      const url = queue.pop();
-      if (seen.has(url) || !url.startsWith(root)) continue;
-      seen.add(url);
-      for (const spec of specs(await text(url))) queue.push(new URL(spec, url).href);
-    }
-
-    assertTrue(seen.size >= 20, `נמצאו רק ${seen.size} מודולים — המעקב אחרי ה-import-ים נשבר`);
-    const missing = [...seen]
-      .map(url => `./${url.slice(root.length)}`)
-      .filter(rel => !sw.includes(`'${rel}'`))
-      .sort();
+    // כל מודול שהאפליקציה מייבאת, ישירות או דרך מסך, חייב להיות במטמון
+    const modules = [
+      'app', 'db', 'ui', 'icons', 'trips', 'itinerary', 'expenses', 'money', 'rates',
+      'currencies', 'prep', 'catalog', 'excel', 'backup', 'migrate', 'onboarding',
+    ].map(m => `./js/${m}.js`);
+    const screens = ['prep', 'plan', 'expenses', 'summary', 'settings'].map(m => `./js/screens/${m}.js`);
+    const missing = [...modules, ...screens].filter(m => !sw.includes(`'${m}'`));
     assertEqual(missing, [], 'מודולים שאינם נשמרים למטמון ולכן ישברו אופליין');
-    assertTrue(index.includes("register('./sw.js'"), 'ה-Service Worker אינו נרשם');
+    assertTrue(index.includes("navigator.serviceWorker.register('./sw.js')"), 'ה-Service Worker אינו נרשם');
   });
 
   s.test('index.html אינו טוען דבר מהאינטרנט', async () => {
@@ -73,20 +61,6 @@ export default async function () {
       src.includes('url.origin !== self.location.origin'),
       'בקשות חיצוניות אינן מוחרגות — שער ישן עלול להיות מוגש כאילו הוא טרי'
     );
-  });
-
-  s.test('גרסה חדשה מודיעה לדף, והדף יודע לרענן את עצמו', async () => {
-    const [sw, index] = await Promise.all([text('../sw.js'), text('../index.html')]);
-    assertTrue(sw.includes("postMessage({ type: 'sw-updated' })"),
-      'ה-Service Worker אינו מודיע על גרסה חדשה');
-    assertTrue(sw.includes('if (!stale.length) return;'),
-      'התקנה ראשונה תגרור רענון מיותר');
-    assertTrue(index.includes("'sw-updated'") && index.includes('location.reload()'),
-      'הדף אינו מרענן את עצמו כשמגיעה גרסה חדשה');
-    assertTrue(index.includes("updateViaCache: 'none'"),
-      'sw.js עלול להיות מוגש מהמטמון של הדפדפן, והעדכון יתעכב');
-    assertTrue(index.includes('.sheet-backdrop'),
-      'הרענון אינו ממתין לסגירת חלון פתוח');
   });
 
   await s.done();

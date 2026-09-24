@@ -185,22 +185,10 @@ export default async function () {
     assertEqual(navigator.onLine, true, 'הדמיית הניתוק לא בוטלה');
   });
 
-  s.test('רענון שכבר רץ היום אינו רץ שוב על מטבע שיש לו שער', async () => {
+  s.test('רענון שכבר רץ היום אינו רץ שוב', async () => {
     await db.wipe();
-    await rates.applyRates({ USD: { ok: true, rate: 3.9, source: 'frankfurter' } });
     await db.setSetting('lastAutoRates', new Date().toISOString());
     assertEqual((await rates.autoRefresh(['USD'])).skipped, 'fresh');
-  });
-
-  s.test('מטבע בלי שער בכלל נמשך גם אם הרענון היומי כבר רץ', async () => {
-    await db.wipe();
-    await rates.applyRates({ USD: { ok: true, rate: 3.9, source: 'frankfurter' } });
-    await db.setSetting('lastAutoRates', new Date().toISOString());
-    // GEL אינו מוכר לאפליקציה, ולכן בלי המשיכה הזו כל סכום בטיול בלארי
-    // היה נספר 1:1. אין רשת בבדיקות, ולכן מה שנבדק הוא שהניסיון נעשה.
-    const res = await rates.autoRefresh(['USD', 'GEL']);
-    assertEqual(res.skipped, undefined, 'המשיכה דולגה למרות שחסר שער');
-    assertEqual(res.tried, 1, 'נמשך גם מטבע שכבר יש לו שער');
   });
 
   s.test('כשכל השערים ידניים אין מה למשוך', async () => {
@@ -209,16 +197,6 @@ export default async function () {
     const res = await rates.autoRefresh(['ILS', 'USD']);
     assertEqual([res.skipped, res.saved], ['manual', 0]);
     assertEqual((await rates.getRate('USD')).rate, 3.9);
-  });
-
-  s.test('rateMap מחזיר שער לכל מטבע, ו-null למטבע בלי שער שמור', async () => {
-    await db.wipe();
-    await rates.setManualRate('EUR', 4);
-    const map = await rates.rateMap(['ILS', 'eur', 'EUR', 'XYZ', null]);
-    assertEqual(map.ILS, 1);
-    assertEqual(map.EUR, 4);
-    assertEqual(map.XYZ, null, 'מטבע לא מוכר קיבל שער מומצא');
-    assertEqual(Object.keys(map).sort(), ['EUR', 'ILS', 'XYZ']);
   });
 
   await s.done();

@@ -5,18 +5,10 @@ import * as cur from '../currencies.js';
 import * as money from '../money.js';
 import * as excel from '../excel.js';
 import * as backup from '../backup.js';
-import * as sheets from '../sheets.js';
 import * as catalog from '../catalog.js';
-import * as imported from '../imported.js';
-import {
-  el, card, sheet, toast, confirmDanger, icon, fieldRow, flashRequired,
-  ilsNote, fmtMoney, fmtMoneyHtml, fmtDateRange,
-} from '../ui.js';
+import { el, card, sheet, toast, confirmDanger, icon, fmtMoney, fmtDateRange } from '../ui.js';
 import { refresh, setActiveTrip, navigate } from '../app.js';
 import { openTripWizard } from '../onboarding.js';
-import { openSheetsWizard } from '../sheets-setup.js';
-import { INTRO_LEAD, introPoints } from './no-trip.js';
-import { openWelcome } from '../welcome.js';
 
 const CATEGORY_ICONS = [
   'restaurant', 'ride', 'lodging', 'attraction', 'shopping', 'flight',
@@ -34,7 +26,7 @@ function section(title, note, children) {
 
 // ---------- טיולים ----------
 
-function tripCard(trip, totals, isActive, rate) {
+function tripCard(trip, totals, isActive) {
   return el('article', { class: 'trip-card card-gap', 'aria-current': String(isActive) }, [
     el('div', { class: 'trip-card-head' }, [
       el('button', {
@@ -54,10 +46,7 @@ function tripCard(trip, totals, isActive, rate) {
       onClick: () => { setActiveTrip(trip.id); navigate('summary'); },
     }, [
       el('span', { class: 'dim', text: `סה"כ הוצאות (${totals.count})` }),
-      el('span', { style: 'text-align:end' }, [
-        el('div', { class: 'total num', html: fmtMoneyHtml(totals.amount, trip.currency) }),
-        ilsNote(totals.amount, trip.currency, rate),
-      ]),
+      el('span', { class: 'total num', text: fmtMoney(totals.amount, trip.currency) }),
     ]),
     el('div', { style: 'display:flex; gap:8px; padding:0 14px 10px' }, [
       el('button', {
@@ -113,7 +102,7 @@ function currencySection(active) {
   const rows = [...chosen].map(code => el('div', { class: 'row' }, [
     el('span', { class: 'grow row-title', text: cur.label(code) }),
     code === 'ILS'
-      ? el('span', { class: 'sub', text: 'תמיד פעיל · מטבע הבסיס' })
+      ? el('span', { class: 'sub', text: 'תמיד פעיל' })
       : el('button', {
           class: 'icon-btn', style: 'color:var(--color-danger)',
           'aria-label': `הסר את ${code}`, html: icon('close'),
@@ -128,7 +117,7 @@ function currencySection(active) {
 
   return section(
     'מטבעות פעילים',
-    'רק המטבעות שנבחרו כאן מופיעים בדרופדאון שליד כל שדה סכום. השקל תמיד פעיל כי הוא מטבע הבסיס — שערים והזנה ידנית שלהם נמצאים במקטע "שערי המרה" שמתחת.',
+    'רק המטבעות שנבחרו כאן מופיעים בדרופדאון שליד כל שדה סכום. השקל תמיד פעיל.',
     [picker, ...rows],
   );
 }
@@ -235,9 +224,6 @@ async function hiddenCatalogSection() {
 
 // ---------- שערי המרה ----------
 
-/** שער מוצג בעד ארבע ספרות אחרי הנקודה — מעבר לזה זה רעש, לא דיוק. */
-const round4 = n => Math.round(n * 10000) / 10000;
-
 function fxAge(ts) {
   const days = Math.floor((Date.now() - Date.parse(ts)) / 86400000);
   if (days <= 0) return 'עודכן היום';
@@ -248,17 +234,12 @@ function fxAge(ts) {
 function openManualRateSheet(currency, existing) {
   const rate = el('input', {
     class: 'field', type: 'number', inputmode: 'decimal', step: '0.0001', value: existing?.rate ?? '',
-    placeholder: 'לדוגמה: 3.7',
   });
-  const body = el('div', {}, [
-    fieldRow(`כמה שקלים שווה 1 ${currency}`, rate, { required: true }),
-    el('p', { class: 'sub',
-      text: 'שער שמוזן כאן נשאר עד שמחליפים אותו כאן שוב — הרענון היומי אינו דורס שער ידני. סכומים שכבר נרשמו שומרים את השער שנצרב עליהם.' }),
-  ]);
-
   const s = sheet({
     title: `שער ידני ל-${currency}`,
-    body,
+    body: el('div', { class: 'field-row' }, [
+      el('label', { class: 'field-label', text: `כמה שקלים שווה 1 ${currency}` }), rate,
+    ]),
     actions: [
       el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
       el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
@@ -267,10 +248,7 @@ function openManualRateSheet(currency, existing) {
           toast('השער נשמר', 'success');
           s.close();
           refresh();
-        } catch (err) {
-          toast(err.message, 'error');
-          flashRequired(body, { onlyEmpty: true });
-        }
+        } catch (err) { toast(err.message, 'error'); }
       } }),
     ],
   });
@@ -281,11 +259,7 @@ async function refreshRatesFlow(currencies) {
   toast('מושך שערים…');
   const fetched = await rates.fetchRates(currencies);
   const ok = Object.entries(fetched).filter(([, r]) => r.ok);
-  if (!ok.length) {
-    // בלי רשת אין מה למשוך, וזה בדיוק הרגע שבו צריך לדעת שיש דרך שנייה
-    toast('לא ניתן היה למשוך שערים כרגע — אפשר להזין שער ידנית בכל שורה', 'warning');
-    return;
-  }
+  if (!ok.length) { toast('לא ניתן היה למשוך שערים כרגע', 'warning'); return; }
 
   const s = sheet({
     title: 'שערים שנמשכו',
@@ -311,67 +285,33 @@ async function refreshRatesFlow(currencies) {
   });
 }
 
-/**
- * שערי המרה. המקטע מוצג תמיד, גם כשאין מטבע זר אחד: מי שמחפש כאן את השקל
- * צריך למצוא תשובה, ולא מקטע שנעלם.
- *
- * לשקל אין ואינו יכול להיות שער — הוא הסרגל שכל השאר נמדד מולו. במקום
- * להשמיט אותו ולהשאיר את זה כחידה, הוא מופיע כשורת הבסיס ואומר את זה.
- */
-function fxSection(currencies, known, tripCurrency = 'ILS') {
+function fxSection(currencies, known) {
   const foreign = currencies.filter(c => c !== 'ILS');
-
-  // לשקל יש שער מול מטבע הטיול, והוא זה שמעניין את מי שמזין סכום בשקלים.
-  // הוא נגזר מהשער השמור של מטבע הטיול, ולכן מוצג רק כשיש שער כזה.
-  const trip = (tripCurrency || 'ILS').toUpperCase();
-  const tripRate = trip === 'ILS' ? 1 : known[trip]?.rate ?? null;
-  const baseRow = el('div', { class: 'row' }, [
-    el('div', { class: 'grow' }, [
-      el('div', { class: 'row-title', text: cur.label('ILS') }),
-      el('div', { class: 'sub',
-        text: trip === 'ILS'
-          ? 'מטבע הבסיס, וגם מטבע הטיול הפעיל — כל שער כאן נמדד מולו.'
-          : tripRate
-            ? `1 ₪ = ${round4(1 / tripRate)} ${cur.symbol(trip)} מול מטבע הטיול · נגזר מהשער של ${trip}, ולפיו מומר כל סכום שמוזן בשקלים.`
-            : `מטבע הבסיס. שער השקל מול מטבע הטיול (${trip}) ייגזר מהשער של ${trip} — הזינו אותו בשורה שלו כדי שסכומים בשקלים יומרו.` }),
-    ]),
-  ]);
-
-  const rows = foreign.map(code => {
-    const r = known[code];
-    return el('div', { class: 'row' }, [
-      el('div', { class: 'grow' }, [
-        el('div', { class: 'row-title', text: cur.label(code) }),
-        el('div', { class: 'sub',
-          text: r
-            ? `1 ${code} = ${r.rate} ₪ · ${fxAge(r.ts)} (${r.source})${r.stale ? ' · ישן' : ''}`
-            : 'אין שער שמור — הסכומים במטבע הזה לא יומרו לשקלים' }),
-      ]),
-      // כפתור טקסט ולא עיפרון: הזנת שער ידנית היא הדרך היחידה כשאין רשת,
-      // והיא הייתה חבויה מאחורי אייקון שאיש לא זיהה כשדה סכום
-      el('button', {
-        class: 'link-btn', text: r ? 'עדכון שער' : 'הזנת שער',
-        'aria-label': `${r ? 'עדכון' : 'הזנת'} שער ידני ל-${code}`,
-        onClick: () => openManualRateSheet(code, r),
-      }),
-    ]);
-  });
-
+  if (!foreign.length) return null;
   return section(
     'שערי המרה',
-    'כל השערים נמדדים מול השקל. אפשר למשוך אותם מהאינטרנט, ואפשר להזין כל שער ידנית — כך ההמרות עובדות גם אופליין.',
-    [
-      baseRow,
-      ...rows,
-      foreign.length
-        ? el('button', {
-            class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
-            html: `${icon('refresh')}<span>רענן שערים מהאינטרנט</span>`,
-            onClick: () => refreshRatesFlow(foreign),
-          })
-        : el('p', { class: 'sub', style: 'margin:8px 0 0',
-            text: 'אין מטבעות זרים פעילים, ולכן אין שער לרענן — בשקלים בלבד אין המרה. הוסיפו מטבע במקטע "מטבעות פעילים" שמעל, והשער שלו מול השקל יופיע כאן.' }),
-    ],
+    'כל השערים מול השקל. האפליקציה עובדת אופליין עם השערים הידניים.',
+    [...foreign.map(code => {
+      const r = known[code];
+      return el('div', { class: 'row' }, [
+        el('div', { class: 'grow' }, [
+          el('div', { class: 'row-title', text: cur.label(code) }),
+          el('div', { class: 'sub',
+            text: r
+              ? `1 ${code} = ${r.rate} ₪ · ${fxAge(r.ts)} (${r.source})${r.stale ? ' · ישן' : ''}`
+              : 'אין שער שמור — הזן ידנית' }),
+        ]),
+        el('button', {
+          class: 'icon-btn', 'aria-label': `שער ידני ל-${code}`,
+          html: icon('edit'), onClick: () => openManualRateSheet(code, r),
+        }),
+      ]);
+    }),
+    el('button', {
+      class: 'btn btn-secondary btn-block', style: 'margin-block-start:12px',
+      html: `${icon('refresh')}<span>רענן שערים מהאינטרנט</span>`,
+      onClick: () => refreshRatesFlow(foreign),
+    })],
   );
 }
 
@@ -417,144 +357,6 @@ function openCategorySheet(tripId, existing) {
       } }),
     ],
   });
-}
-
-// ---------- קטלוגים מיובאים ----------
-
-/**
- * חלון ההעלאה. הקובץ כבר נקרא ואומת לפני שהחלון נפתח, ולכן כאן נשארו רק
- * ההחלטות: איך קוראים לרשימה, ולאן היא משויכת. שדות השיוך אופציונליים —
- * בלעדיהם הרשימה זמינה מכל רשימת הכנה, וזו ברירת המחדל.
- */
-async function openImportSheet(items, suggestedName) {
-  const name = el('input', { class: 'field', type: 'text', value: suggestedName });
-
-  const phases = await catalog.phases();
-  const phaseSel = el('select', { class: 'field' }, [
-    el('option', { value: '', text: 'ללא שיוך — זמינה בכל הרשימות' }),
-    ...phases.map(p => el('option', { value: p, text: p })),
-  ]);
-  const sectionSel = el('select', { class: 'field', disabled: true }, [
-    el('option', { value: '', text: 'ללא מדור' }),
-  ]);
-
-  phaseSel.addEventListener('change', async () => {
-    const options = [el('option', { value: '', text: 'ללא מדור' })];
-    if (phaseSel.value) {
-      for (const sec of await catalog.sections(phaseSel.value)) {
-        options.push(el('option', { value: sec, text: sec }));
-      }
-    }
-    sectionSel.replaceChildren(...options);
-    sectionSel.disabled = !phaseSel.value;
-  });
-
-  const row = (label, node) => el('div', { class: 'field-row' }, [
-    el('label', { class: 'field-label', text: label }), node,
-  ]);
-
-  const s = sheet({
-    title: 'רשימה מיובאת',
-    body: el('div', {}, [
-      el('p', { class: 'sub', style: 'margin:0 0 12px', text: `נקראו ${items.length} פריטים מהקובץ.` }),
-      row('שם הרשימה', name),
-      row('שלב', phaseSel),
-      row('מדור', sectionSel),
-      el('p', { class: 'sub',
-        text: 'הרשימה תופיע תמיד בסוף בורר הקטלוג, מסומנת כרשימה מיובאת. השיוך קובע רק לאיזו רשימת הכנה ולאיזו קטגוריה הפריטים ייכנסו.' }),
-    ]),
-    actions: [
-      el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
-      el('button', { class: 'btn btn-primary btn-block', text: 'שמור', onClick: async () => {
-        try {
-          await imported.add({
-            name: name.value, items,
-            phase: phaseSel.value || null,
-            section: sectionSel.value || null,
-          });
-          toast(`נשמרו ${items.length} פריטים`, 'success');
-          s.close();
-          refresh();
-        } catch (err) { toast(err.message, 'error'); }
-      } }),
-    ],
-  });
-}
-
-function importCatalogFlow() {
-  pickFile('.xlsx,.csv', async file => {
-    let parsed;
-    try {
-      parsed = await imported.parse(file);
-    } catch (err) { toast(err.message, 'error'); return; }
-
-    if (!parsed.ok) {
-      const s = sheet({
-        title: 'הקובץ לא תקין',
-        body: el('div', {}, parsed.errors.map(e =>
-          el('div', { class: 'toast error', style: 'margin-block-start:8px', text: e }))),
-        actions: [el('button', { class: 'btn btn-tertiary btn-block', text: 'סגור', onClick: () => s.close() })],
-      });
-      return;
-    }
-    await openImportSheet(parsed.items, file.name.replace(/\.(xlsx|csv)$/i, ''));
-  });
-}
-
-function importedSection(lists) {
-  const rows = lists.map(entry => el('div', { class: 'row' }, [
-    el('span', { class: 'grow' }, [
-      el('div', { class: 'row-title', text: entry.name }),
-      el('div', { class: 'sub', text: [
-        `${entry.items.length} פריטים`,
-        entry.phase ? `שלב ${entry.phase}` : null,
-        entry.section ? `מדור ${entry.section}` : null,
-        entry.addedAt,
-      ].filter(Boolean).join(' · ') }),
-    ]),
-    el('button', {
-      class: 'icon-btn', style: 'color:var(--color-danger)',
-      'aria-label': `מחק את ${entry.name}`, html: icon('trash'),
-      onClick: async () => {
-        const ok = await confirmDanger({
-          title: `למחוק את "${entry.name}"?`,
-          body: 'הרשימה תיעלם מבורר הקטלוג. משימות שכבר נוספו לטיולים יישארו במקומן.',
-          confirmLabel: 'מחק רשימה',
-        });
-        if (!ok) return;
-        await imported.remove(entry.id);
-        toast('הרשימה נמחקה', 'success');
-        refresh();
-      },
-    }),
-  ]));
-
-  return section(
-    'קטלוגים מיובאים',
-    'רשימות פריטים משלך, מקובץ xlsx או csv: עמודה אחת עם הפריטים, ועמודה שנייה אופציונלית עם הדחיפות. הן נשמרות במכשיר הזה וזמינות בכל הטיולים.',
-    [
-      ...(rows.length ? rows : [el('p', { class: 'dim', style: 'margin:0', text: 'עוד לא העלית רשימות.' })]),
-      el('div', { style: 'display:flex; gap:8px; margin-block-start:12px' }, [
-        el('button', {
-          class: 'btn btn-secondary btn-block', html: `${icon('share')}<span>העלאת רשימה</span>`,
-          onClick: importCatalogFlow,
-        }),
-        el('button', {
-          class: 'btn btn-tertiary btn-block', html: `${icon('download')}<span>קובץ תבנית</span>`,
-          onClick: () => {
-            try {
-              const url = URL.createObjectURL(imported.templateBlob());
-              const a = el('a', { href: url, download: 'תבנית-רשימה.xlsx' });
-              document.body.append(a);
-              a.click();
-              a.remove();
-              setTimeout(() => URL.revokeObjectURL(url), 5000);
-            } catch (err) { toast(err.message, 'error'); }
-          },
-        }),
-      ]),
-    ],
-  );
 }
 
 // ---------- אקסל וגיבוי ----------
@@ -623,9 +425,6 @@ function openImportPreview(trip, parsed) {
       el('div', { text: `יעדים: ${parsed.preview.segments}` }),
       el('div', { text: `פריטי מסלול: ${parsed.preview.items}` }),
       el('div', { text: `הוצאות: ${parsed.preview.expenses}` }),
-      parsed.preview.budgets
-        ? el('div', { text: `תקציבי קטגוריות: ${parsed.preview.budgets}` })
-        : null,
     ]),
     actions: [
       el('button', { class: 'btn btn-tertiary btn-block', text: 'ביטול', onClick: () => s.close() }),
@@ -671,12 +470,12 @@ function importExcel(trip) {
 async function runBackup(tripId) {
   try {
     const res = await backup.toFile(tripId);
-    if (res.method === 'share') { toast('הגיבוי נשלח לשיתוף', 'success'); await backup.markBackedUp(); }
-    else if (res.method === 'download') { toast('קובץ הגיבוי הורד', 'success'); await backup.markBackedUp(); }
+    if (res.method === 'share') toast('הגיבוי נשלח לשיתוף', 'success');
+    else if (res.method === 'download') toast('קובץ הגיבוי הורד', 'success');
   } catch (err) { toast(err.message, 'error'); }
 }
 
-export function runRestore() {
+function runRestore() {
   pickFile('.json,application/json', async file => {
     const parsed = await backup.parseBackup(file);
     if (!parsed.ok) { toast(parsed.error, 'error'); return; }
@@ -728,73 +527,6 @@ export function runRestore() {
   });
 }
 
-// ---------- גיבוי לגוגל שיטס ----------
-
-const NEVER = 'עדיין לא סונכרן';
-
-async function sheetsSection() {
-  const st = await sheets.status();
-
-  if (!st.connected) {
-    return section(
-      'גיבוי לגוגל שיטס',
-      'אפשר לחבר גיליון גוגל משלך, והאפליקציה תעדכן אותו לבד בכל פתיחה ויציאה. ההתקנה נעשית פעם אחת ממחשב, ואורכת כחמש דקות. הגיבוי לקובץ ממשיך לעבוד בלי קשר.',
-      [el('button', {
-        class: 'btn btn-secondary btn-block', text: 'הגדרת חיבור',
-        onClick: () => openSheetsWizard(),
-      })],
-    );
-  }
-
-  const when = st.lastSyncAt
-    ? new Intl.DateTimeFormat('he-IL', { dateStyle: 'short', timeStyle: 'short' })
-        .format(new Date(st.lastSyncAt))
-    : NEVER;
-
-  return section(
-    'גיבוי לגוגל שיטס',
-    'הגיליון מתעדכן לבד. הסנכרון חד-כיווני: מה שנכתב בגיליון מתוך גוגל יידרס בעדכון הבא.',
-    [
-      el('div', { class: 'row' }, [
-        el('span', { class: 'grow', text: 'סונכרן לאחרונה' }),
-        el('span', { class: 'sub', text: when }),
-      ]),
-      st.dirty
-        ? el('div', { class: 'row' }, [
-            el('span', { class: 'grow', text: 'ממתין לשליחה' }),
-            el('span', { class: 'sub', text: 'יש שינויים שטרם נשלחו' }),
-          ])
-        : null,
-      // שגיאה מוצגת כאן ולא כהודעה קופצת — כישלון רשת חוזר לא אמור להטריד
-      // מישהו באמצע רישום הוצאה.
-      st.lastError
-        ? el('p', { class: 'wizard-warn', style: 'margin-block-start:8px', text: st.lastError })
-        : null,
-      el('div', { style: 'display:flex; gap:8px; margin-block-start:8px' }, [
-        el('button', { class: 'btn btn-secondary btn-block', html: `${icon('refresh')}<span>סנכרן עכשיו</span>`,
-          onClick: async () => {
-            const res = await sheets.syncNow();
-            if (res.ok) toast('הגיליון עודכן', 'success');
-            else toast(res.error || res.skipped || 'הסנכרון נכשל', 'error');
-            refresh();
-          } }),
-        el('button', { class: 'btn btn-danger', text: 'נתק',
-          onClick: async () => {
-            const ok = await confirmDanger({
-              title: 'לנתק את הגיליון?',
-              body: 'האפליקציה תפסיק לעדכן אותו. הגיליון עצמו וכל מה שכבר נשמר בו יישארו בגוגל כפי שהם.',
-              confirmLabel: 'נתק',
-            });
-            if (!ok) return;
-            await sheets.disconnect();
-            toast('הגיליון נותק', 'success');
-            refresh();
-          } }),
-      ]),
-    ],
-  );
-}
-
 // ---------- המסך ----------
 
 export async function mount(host, tripId) {
@@ -811,12 +543,9 @@ export async function mount(host, tripId) {
   host.append(el('h2', { class: 'screen-title', style: 'margin-block-start:16px', text: 'טיולים' }));
   host.append(el('p', { class: 'sub', style: 'margin:0 0 12px',
     text: 'לחיצה על כרטיס פותחת את הסיכום שלו. הטיול הפעיל הוא זה שכל שאר המסכים מציגים.' }));
-  const tripRates = await rates.rateMap(all.map(t => t.currency));
-  for (const t of all) {
-    host.append(tripCard(t, totals.get(t.id), t.id === tripId, tripRates[(t.currency || 'ILS').toUpperCase()]));
-  }
+  for (const t of all) host.append(tripCard(t, totals.get(t.id), t.id === tripId));
   host.append(el('button', {
-    class: 'btn btn-primary btn-hero card-gap',
+    class: 'btn btn-primary btn-block card-gap',
     html: `${icon('plus')}<span>טיול חדש</span>`,
     onClick: () => openTripWizard(null),
   }));
@@ -826,7 +555,8 @@ export async function mount(host, tripId) {
 
   const known = {};
   for (const code of active) known[code] = await rates.getRate(code);
-  host.append(fxSection(active, known, trip?.currency));
+  const fx = fxSection(active, known);
+  if (fx) host.append(fx);
 
   if (trip) {
     const cats = await trips.categories(trip.id);
@@ -872,12 +602,11 @@ export async function mount(host, tripId) {
     ));
   }
 
-  host.append(importedSection(await imported.list()));
   host.append(await hiddenCatalogSection());
 
   host.append(section(
     'גיבוי ושחזור',
-    'האפליקציה מבקשת מהדפדפן לא למחוק את הנתונים לבד, וכל כמה שבועות מזכירה לגבות לקובץ. גיבוי בלחיצת כפתור תמיד זמין כאן. גיבוי של טיול בודד אינו כולל מטבעות ושערים, שהם של המכשיר ולא של הטיול.',
+    'קובץ JSON, בלחיצת כפתור ובאחריותך — אין גיבוי אוטומטי. גיבוי של טיול בודד אינו כולל מטבעות ושערים, שהם של המכשיר ולא של הטיול.',
     [
       el('div', { style: 'display:flex; gap:8px' }, [
         el('button', { class: 'btn btn-secondary btn-block', html: `${icon('share')}<span>גבה הכול</span>`,
@@ -894,16 +623,6 @@ export async function mount(host, tripId) {
         : null,
     ],
   ));
-
-  host.append(section('מה אפשר לעשות כאן', INTRO_LEAD, [
-    introPoints(),
-    el('button', {
-      class: 'btn btn-tertiary btn-block', style: 'margin-block-start:14px',
-      text: 'הצג שוב את מסכי הפתיחה', onClick: () => openWelcome(),
-    }),
-  ]));
-
-  host.append(await sheetsSection());
 
   host.append(section(
     'מחיקת כל הנתונים',

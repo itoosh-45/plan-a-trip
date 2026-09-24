@@ -1,5 +1,5 @@
 import * as db from './db.js';
-import { datesBetween, startOfWeek } from './ui.js';
+import { datesBetween } from './ui.js';
 
 export const ITEM_TYPES = [
   { key: 'flight',     label: 'טיסה',     icon: 'flight' },
@@ -17,67 +17,6 @@ const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
 
 export function segmentDays(seg) {
   return datesBetween(seg.startDate, seg.endDate || seg.startDate);
-}
-
-export const GROUPINGS = { days: 'ימים', weeks: 'שבועות', months: 'חודשים' };
-
-/**
- * כל ימי הטיול, מהמוקדם שבתאריכי הטיול והיעדים ועד המאוחר שבהם. יעד שחורג
- * מטווח הטיול נשאר בפנים — עדיף יום מיותר ברשימה על יום שנעלם.
- */
-export function tripDays(trip, segs = []) {
-  const places = segs.filter(s => s.kind !== 'general' && s.startDate);
-  const starts = [trip?.startDate, ...places.map(s => s.startDate)].filter(Boolean).sort();
-  if (!starts.length) return [];
-  const ends = [trip?.endDate, ...places.map(s => s.endDate || s.startDate), starts.at(-1)]
-    .filter(Boolean).sort();
-  return datesBetween(starts[0], ends.at(-1));
-}
-
-const periodOf = (iso, mode) =>
-  (mode === 'weeks' ? startOfWeek(iso) : mode === 'months' ? iso.slice(0, 7) : iso);
-
-/**
- * הימים מחולקים לקבוצות מתקפלות. קבוצה נשברת בשני מקומות: בגבול תקופת הלוח
- * (שבוע שמתחיל ביום א׳, או חודש), ובכל החלפת יעד. לכן יעד בן שלושה ימים
- * באמצע שבוע, או זנב של יומיים אחרי שהיעד נגמר, הם קבוצה שמתקפלת בנפרד.
- *
- * index הוא מספר השבוע או החודש בתוך הטיול, וקבוצות של אותה תקופה חולקות
- * אותו — כך רואים מיד ששתי קבוצות סמוכות הן אותו שבוע, מפוצל לפי יעד.
- * partial אומר שהקבוצה אינה כל מה שיש לטיול באותה תקופה.
- */
-export function groupDays(days, mode = 'days', segs = []) {
-  if (!days.length) return [];
-
-  const groups = [];
-  const perPeriod = new Map();
-  for (const day of days) {
-    const period = periodOf(day, mode);
-    perPeriod.set(period, (perPeriod.get(period) || 0) + 1);
-    const segmentId = segmentForDate(segs, day)?.id || null;
-    const last = groups.at(-1);
-    if (last && last.period === period && last.segmentId === segmentId) {
-      last.days.push(day);
-      continue;
-    }
-    groups.push({ period, segmentId, days: [day] });
-  }
-
-  let index = 0;
-  let seen = null;
-  return groups.map(g => {
-    if (g.period !== seen) { index += 1; seen = g.period; }
-    return {
-      ...g,
-      key: `g:${g.days[0]}`,
-      mode,
-      index,
-      from: g.days[0],
-      to: g.days.at(-1),
-      dayCount: g.days.length,
-      partial: g.days.length < perPeriod.get(g.period),
-    };
-  });
 }
 
 /** תאריכי ISO ניתנים להשוואה כמחרוזות — אין צורך להמיר לזמן. */
@@ -103,38 +42,6 @@ export async function defaultSegmentId(tripId, today = new Date().toISOString().
   const segs = await listSegments(tripId);
   const hit = segmentForDate(segs, today);
   return (hit || segs.find(s => s.kind === 'general'))?.id || null;
-}
-
-/**
- * התאריכים שיעד חדש נפתח איתם: מהיום שאחרי סוף היעד האחרון ועד סוף הטיול.
- * זה כמעט תמיד מה שרוצים, וזה גם הטווח היחיד שבטוח אינו חופף ליעד קיים.
- * טיול בלי תאריכים מחזיר שדות ריקים — אין ממה לגזור.
- */
-export function defaultRange(trip, segs) {
-  if (!trip?.startDate) return { startDate: '', endDate: '' };
-  const ends = segs.filter(s => s.kind !== 'general' && s.startDate)
-    .map(s => s.endDate || s.startDate).sort();
-  const last = ends.at(-1);
-  const start = last ? nextDay(last) : trip.startDate;
-  const endDate = trip.endDate || '';
-  // היעד האחרון כבר נגמר בסוף הטיול — אין יום פנוי להציע
-  if (endDate && start > endDate) return { startDate: '', endDate: '' };
-  return { startDate: start, endDate };
-}
-
-const nextDay = iso =>
-  new Date(Date.parse(`${iso}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
-
-/**
- * הטווח שהטיול צריך לגדול אליו כדי להכיל את היעד, או null אם הוא כבר מכיל
- * אותו. טיול בלי תאריכים אינו מגביל דבר ולכן לעולם אינו זקוק להארכה.
- */
-export function rangeOverflow(trip, startDate, endDate) {
-  if (!trip?.startDate || !trip?.endDate) return null;
-  const end = endDate || startDate;
-  const before = startDate && startDate < trip.startDate ? startDate : null;
-  const after = end > trip.endDate ? end : null;
-  return before || after ? { startDate: before, endDate: after } : null;
 }
 
 export async function saveSegment(tripId, seg) {
@@ -209,20 +116,6 @@ export async function saveItem(tripId, item) {
     segmentId: item.segmentId ?? null,
     plannedAmount: item.plannedAmount === '' ? undefined : item.plannedAmount,
   });
-}
-
-/**
- * ההזנה החופשית ביום: כותרת בלבד. אין סוג לבחור, אין סכום ואין קטגוריה —
- * רשימת היום היא רשימת משימות, ולא טופס הוצאה.
- */
-export async function quickAddItem(tripId, { date, title, segmentId = null }) {
-  return saveItem(tripId, { type: 'other', title, date, segmentId, done: false });
-}
-
-export async function toggleItemDone(tripId, itemId) {
-  const item = await db.get(db.STORES.items, itemId);
-  if (!item) throw new Error('הפריט לא נמצא');
-  return db.put(db.STORES.items, { ...item, done: !item.done });
 }
 
 export async function removeItem(tripId, itemId) {

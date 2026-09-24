@@ -1,20 +1,14 @@
-import { el, icon, toast, fmtDateRange, sheet } from './ui.js';
+import { el, icon, toast, fmtDateRange } from './ui.js';
 import { listTrips, tripDates } from './trips.js';
 import * as migrate from './migrate.js';
 import * as rates from './rates.js';
 import * as cur from './currencies.js';
-import * as backup from './backup.js';
-import * as sheets from './sheets.js';
-import { maybeOpenWelcome } from './welcome.js';
 
-// חמישה טאבים. התוויות קצרות בכוונה — ברוחב טלפון תווית בת שתי מילים
-// נשברת לשתי שורות ומעוותת את גובה הסרגל.
 const SCREENS = [
-  { key: 'prep',     label: 'הכנה',   iconName: 'check' },
-  { key: 'plan',     label: 'תכנון',  iconName: 'plan' },
-  { key: 'expenses', label: 'הוצאות', iconName: 'expenses' },
-  { key: 'summary',  label: 'סיכום',  iconName: 'summary' },
-  { key: 'settings', label: 'הגדרות', iconName: 'settings' },
+  { key: 'prep',     label: 'רשימת הכנה', iconName: 'check' },
+  { key: 'plan',     label: 'תכנון',      iconName: 'plan' },
+  { key: 'expenses', label: 'הוצאות',     iconName: 'expenses' },
+  { key: 'summary',  label: 'סיכום',      iconName: 'summary' },
 ];
 
 const mounts = new Map();
@@ -41,14 +35,18 @@ export function navigate(key) {
 async function buildTopbar() {
   const all = await listTrips();
 
-  // סמל זהות, לא פקד: ההגדרות עברו לטאב התחתון ואין לו לאן לנווט.
-  const logo = el('img', { class: 'topbar-logo', src: './icons/icon-192.png', alt: '' });
+  const settingsBtn = el('button', {
+    class: 'icon-btn',
+    'aria-label': 'הגדרות',
+    html: icon('settings'),
+    onClick: () => navigate('settings'),
+  });
 
   if (!all.length) {
     activeTrip = null;
     return el('div', { class: 'topbar-row' }, [
       el('div', { class: 'grow row-title', text: 'תכנון טיול ותקציב' }),
-      logo,
+      settingsBtn,
     ]);
   }
 
@@ -65,7 +63,7 @@ async function buildTopbar() {
   }, all.map(t => el('option', { value: t.id, selected: t.id === activeTrip, text: t.name })));
 
   return el('div', {}, [
-    el('div', { class: 'topbar-row' }, [select, logo]),
+    el('div', { class: 'topbar-row' }, [select, settingsBtn]),
     startDate
       ? el('div', { class: 'dim', style: 'margin-block-start:6px',
           text: fmtDateRange(startDate, endDate) })
@@ -77,28 +75,6 @@ async function buildTopbar() {
 // יצירת טיול משדרת כמה אירועי data:changed ברצף, ולכל אחד מאזין שקורא ל-refresh.
 // בלי "רק הרינדור האחרון קובע", שני רינדורים חופפים היו מכפילים את התוכן על המסך.
 let renderId = 0;
-
-/**
- * החזקת הרינדור. הזנה מהירה של משימה שומרת רשומה אחרי רשומה, וכל שמירה
- * משדרת data:changed — רינדור מחדש היה סוגר את תיבת הטקסט ומאבד את הפוקוס
- * באמצע ההקלדה. מי שמחזיק אחראי לשחרר, והשחרור מריץ רינדור אחד אם היה צורך.
- */
-let held = 0;
-let missed = false;
-
-export function holdRefresh() { held += 1; }
-
-export function releaseRefresh() {
-  held = Math.max(0, held - 1);
-  if (held || !missed) return;
-  missed = false;
-  refresh();
-}
-
-function onDataChanged() {
-  if (held) { missed = true; return; }
-  refresh();
-}
 
 export async function refresh() {
   const myId = ++renderId;
@@ -120,11 +96,7 @@ export async function refresh() {
 
   if (myId !== renderId) return; // התבטל על ידי רינדור מאוחר יותר
   document.getElementById('topbar').replaceChildren(topbarNode);
-  // מיקום הגלילה נשמר: קיפול יום באמצע רשימה ארוכה לא אמור להחזיר לראש המסך.
-  const screen = document.getElementById('screen');
-  const scroll = screen.scrollTop;
-  screen.replaceChildren(...frag.childNodes);
-  if (scroll) screen.scrollTop = scroll;
+  document.getElementById('screen').replaceChildren(...frag.childNodes);
 }
 
 function buildNav() {
@@ -144,52 +116,20 @@ function buildNav() {
 /** רענון שערים יומי, שקט לגמרי. כישלון אינו מפריע לאפליקציה לעלות. */
 async function autoRefreshRates() {
   try {
-    // גם מטבע של טיול שאינו ברשימה הפעילה — בלי שער אי אפשר להמיר אליו כלום
-    const [active, all] = await Promise.all([cur.listActive(), listTrips()]);
-    const res = await rates.autoRefresh([...new Set([...active, ...all.map(t => t.currency)])]);
+    const res = await rates.autoRefresh(await cur.listActive());
     if (res.saved) refresh();
   } catch { /* אין רשת או שהשירות נפל — ננסה שוב בטעינה הבאה */ }
 }
 
-/** תזכורת עדינה כל כמה שבועות לגבות לקובץ. רק אם יש מה לגבות. */
-async function maybeRemindBackup() {
-  if (!(await listTrips()).length) return;
-  if (!(await backup.dueForReminder())) return;
-
-  const s = sheet({
-    title: 'לגבות את הטיולים?',
-    body: el('p', { class: 'dim',
-      text: 'עברו כמה שבועות מאז הגיבוי האחרון. אפשר לגבות עכשיו לקובץ, או להידחות.' }),
-    actions: [
-      el('button', { class: 'btn btn-tertiary btn-block', text: 'תזכיר לי מאוחר יותר',
-        onClick: async () => { await backup.markBackedUp(); s.close(); } }),
-      el('button', { class: 'btn btn-primary btn-block', text: 'גבה עכשיו', onClick: async () => {
-        s.close();
-        try {
-          const res = await backup.toFile();
-          await backup.markBackedUp();
-          if (res.method === 'share') toast('הגיבוי נשלח לשיתוף', 'success');
-          else if (res.method === 'download') toast('קובץ הגיבוי הורד', 'success');
-        } catch (err) { toast(err.message, 'error'); }
-      } }),
-    ],
-  });
-}
-
 export async function boot() {
   buildNav();
-  if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   try { activeTrip = localStorage.getItem('activeTripId') || null; } catch { activeTrip = null; }
   const report = await migrate.run();
   await migrate.recolorCategories();
-  await migrate.dropLegacyGearTasks();
   if (!report.skipped && report.trips) toast('הנתונים הקיימים הותאמו למבנה החדש', 'success');
-  await maybeOpenWelcome();
-  document.addEventListener('data:changed', onDataChanged);
+  document.addEventListener('data:changed', () => refresh());
   window.addEventListener('online',  () => { toast('חזרנו לרשת', 'success'); autoRefreshRates(); });
   window.addEventListener('offline', () => toast('אין רשת. האפליקציה ממשיכה לעבוד.', 'warning'));
   await refresh();
   autoRefreshRates();
-  maybeRemindBackup();
-  sheets.watch();
 }
