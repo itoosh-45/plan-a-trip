@@ -45,9 +45,12 @@ try {
   await page.goto(base);
   await mkdir('qa-artifacts', { recursive: true });
   await page.locator('.welcome').getByRole('button', { name: 'יצירת טיול', exact: true }).waitFor();
+  await page.waitForTimeout(250); // צילום אחרי אנימציית הכניסה (180ms)
   await page.screenshot({ path: `qa-artifacts/${browserName}-welcome.png` });
   await page.locator('.welcome').getByRole('button', { name: 'יצירת טיול', exact: true }).click();
   await page.locator('.sheet input[type="text"]').first().waitFor();
+  assert.equal(await page.locator('.welcome').count(), 0);
+  await page.waitForTimeout(250); // צילום אחרי אנימציית ה־sheet (200ms)
   await page.screenshot({ path: `qa-artifacts/${browserName}-wizard.png` });
   await page.locator('.sheet input[type="text"]').first().fill('טיול בדיקה');
   await page.getByRole('button', { name: 'צור והמשך' }).click();
