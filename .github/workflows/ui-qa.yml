@@ -23,6 +23,15 @@ jobs:
       - run: node scripts/browser-qa.mjs
         env:
           BROWSER: ${{ matrix.browser }}
+      - uses: actions/checkout@v4
+        if: matrix.browser == 'chromium'
+        with:
+          ref: main
+          path: old-main
+      - run: node scripts/upgrade-qa.mjs
+        if: matrix.browser == 'chromium'
+        env:
+          OLD_ROOT: ${{ github.workspace }}/old-main
       - uses: actions/upload-artifact@v4
         if: always()
         with:
