@@ -51,6 +51,10 @@ try {
   await page.locator('.sheet input[type="text"]').first().waitFor();
   assert.equal(await page.locator('.welcome').count(), 0);
   await page.waitForTimeout(250); // צילום אחרי אנימציית ה־sheet (200ms)
+  const panelRect = await page.locator('.sheet').boundingBox();
+  console.log(`${browserName} wizard bounds: ${JSON.stringify(panelRect)}`);
+  assert.ok(panelRect && panelRect.y < 812 && panelRect.y + panelRect.height > 0,
+    'Wizard sheet must intersect the viewport when opened');
   await page.screenshot({ path: `qa-artifacts/${browserName}-wizard.png` });
   await page.locator('.sheet input[type="text"]').first().fill('טיול בדיקה');
   await page.getByRole('button', { name: 'צור והמשך' }).click();
