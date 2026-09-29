@@ -1,0 +1,25 @@
+name: UI QA
+
+on:
+  push:
+    branches: [codex/ui-ux-refinement]
+  workflow_dispatch:
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/browser-qa.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-qa-failure
+          path: qa-artifacts/
+          if-no-files-found: ignore
