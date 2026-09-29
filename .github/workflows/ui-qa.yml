@@ -9,17 +9,23 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - run: npm install --no-save playwright
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
       - run: node scripts/browser-qa.mjs
+        env:
+          BROWSER: ${{ matrix.browser }}
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: ui-qa-failure
+          name: ui-qa-${{ matrix.browser }}
           path: qa-artifacts/
           if-no-files-found: ignore

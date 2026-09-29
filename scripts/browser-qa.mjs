@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
 const base = 'http://127.0.0.1:8123';
+const browserName = process.env.BROWSER || 'chromium';
 const server = spawn('python3', ['dev-server.py', '8123'], { stdio: 'ignore' });
 let browser;
 let page;
@@ -28,7 +29,7 @@ async function noHorizontalOverflow(page, label) {
 
 try {
   await ready();
-  browser = await chromium.launch({ headless: true });
+  browser = await ({ chromium, webkit })[browserName].launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
   page = await context.newPage();
 
@@ -42,7 +43,10 @@ try {
   assert.ok(Number(summary.match(/(\d+) עברו/)?.[1]) > 100);
 
   await page.goto(base);
+  await mkdir('qa-artifacts', { recursive: true });
+  await page.screenshot({ path: `qa-artifacts/${browserName}-welcome.png` });
   await page.locator('.welcome').getByRole('button', { name: 'יצירת טיול', exact: true }).click();
+  await page.screenshot({ path: `qa-artifacts/${browserName}-wizard.png` });
   await page.locator('.sheet input[type="text"]').first().fill('טיול בדיקה');
   await page.getByRole('button', { name: 'צור והמשך' }).click();
   await page.getByRole('button', { name: 'דלג' }).click();
@@ -77,6 +81,9 @@ try {
     await page.getByText('משימה ארוכה במיוחד לבדיקת גלישת שורה במסך צר').waitFor();
     await noHorizontalOverflow(page, `prep ${width}`);
     assert.equal(await page.locator('.task .title').first().evaluate(e => getComputedStyle(e).fontSize), '16px');
+    if (width === 320 || width === 430) {
+      await page.screenshot({ path: `qa-artifacts/${browserName}-prep-${width}.png` });
+    }
   }
 
   // ״כללי״ נשאר רשומה קיימת אך מוצג תחת היעד היחיד.
@@ -117,7 +124,19 @@ try {
   }, seeded);
   assert.deepEqual(preserved, { general: seeded.generalId, expense: seeded.generalId });
 
-  console.log('Browser QA: suite, onboarding, 320/375/430 widths, 1/2 destinations and data preservation passed');
+  // התקנה ואחריה טעינה כשהרשת כבויה, בדפדפן נקי מאותו origin.
+  const offlineContext = await browser.newContext({ viewport: { width: 375, height: 812 }, serviceWorkers: 'allow' });
+  const offlinePage = await offlineContext.newPage();
+  await offlinePage.goto(base);
+  await offlinePage.evaluate(() => navigator.serviceWorker.ready);
+  await offlinePage.reload();
+  await offlineContext.setOffline(true);
+  await offlinePage.reload();
+  assert.equal(await offlinePage.locator('#nav button').count(), 5);
+  await offlineContext.setOffline(false);
+  await offlineContext.close();
+
+  console.log(`Browser QA (${browserName}): suite, onboarding, 320/375/430 widths, destinations, data preservation and offline passed`);
 } catch (error) {
   console.error(error);
   if (page) {
