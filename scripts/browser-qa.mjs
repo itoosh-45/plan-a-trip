@@ -42,7 +42,7 @@ try {
   assert.ok(Number(summary.match(/(\d+) עברו/)?.[1]) > 100);
 
   await page.goto(base);
-  await page.getByRole('button', { name: 'יצירת טיול', exact: true }).first().click();
+  await page.locator('.welcome').getByRole('button', { name: 'יצירת טיול', exact: true }).click();
   await page.locator('.sheet input[type="text"]').first().fill('טיול בדיקה');
   await page.getByRole('button', { name: 'צור והמשך' }).click();
   await page.getByRole('button', { name: 'דלג' }).click();
