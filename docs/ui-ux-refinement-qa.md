@@ -22,7 +22,7 @@
 
 ## בדיקות דפדפן ואינטגרציה
 
-Workflow: `.github/workflows/ui-qa.yml`; הרצה: `node scripts/browser-qa.mjs` ב־Chromium וב־WebKit, ו־`node scripts/upgrade-qa.mjs` ב־Chromium. ריצת CI ירוקה: https://github.com/itoosh-45/plan-a-trip/actions/runs/36549749528
+Workflow: `.github/workflows/ui-qa.yml`; הרצה: `node scripts/browser-qa.mjs` ב־Chromium וב־WebKit, ו־`node scripts/upgrade-qa.mjs` ב־Chromium. ריצת CI ירוקה: https://github.com/itoosh-45/plan-a-trip/actions/runs/36550569721
 
 - `test.html`: 305 עברו, 0 נכשלו **בכל אחד** משני מנועי הדפדפן. הסוויטות כוללות גיבוי ושחזור JSON, ייצוא/ייבוא Excel ולוגיקת Sheets עם `fetch` מדומה. אין בכך אימות לחשבון Google חי.
 - מסלול משתמש בדפדפן: מסך פתיחה, יצירת טיול, דילוג על שלבי רשות, רענון, הוספת הוצאה ומשימה, מעבר בין מסכים, ותצוגת ״כללי״ עם יעד אחד ושניים. מזהי הנתונים המקוריים נשמרו.
@@ -33,6 +33,7 @@ Workflow: `.github/workflows/ui-qa.yml`; הרצה: `node scripts/browser-qa.mjs`
 ## בדיקות שנותרו לפני מיזוג ל־main
 
 - בדיקה ידנית על iPhone/Safari פיזי, במיוחד לוח התאריכים, גרירת משימות, מגע ו־safe area. WebKit של Playwright ב־Linux אינו זהה למכשיר.
+- ב־WebKit של Playwright, צילום מסך של האשף הראה את הרקע הכהה בלי לצייר את החלון. מדידת ה־DOM הראתה חלון בתוך viewport באותם גבולות כמו Chromium, ואפשר היה למלא ולהשלים את האשף. עדיין דרושה בדיקת ציור חזותי ב־Safari אמיתי; אין להסיק מהבדיקות האוטומטיות שהציור תקין שם.
 - בדיקת חיבור וסנכרון מול Google Sheets בחשבון אמיתי. בדיקות הסוויטה משתמשות בתשובות רשת מדומות.
 - תרחיש עדכון Service Worker בזמן שטופס פתוח ונתונים שהוקלדו אך עדיין לא נשמרו. בדיקת offline כיסתה טעינה לאחר התקנה, לא עדכון תוך כדי עבודה.
 - בדיקת גיבוי ושחזור ידנית עם קובץ משתמש אמיתי, אם מעוניינים לאמת תאימות לנתונים היסטוריים שאינם נכללים בדוגמאות האוטומטיות.
