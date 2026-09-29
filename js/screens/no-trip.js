@@ -46,13 +46,12 @@ function startNote() {
  */
 export function noTripCard(note, { intro = false } = {}) {
   return card([
-    el('div', { class: 'empty-title', text: intro ? 'תכנון טיול ותקציב' : 'אין עדיין טיול' }),
-    el('div', { class: 'dim', text: intro ? INTRO_LEAD : note }),
-    intro ? introPoints() : null,
+    el('div', { class: 'empty-title', text: intro ? 'מתחילים לתכנן טיול' : 'אין עדיין טיול' }),
+    el('div', { class: 'dim', text: intro ? 'צרו טיול כדי לארגן את הימים, ההכנות וההוצאות במקום אחד.' : note }),
     intro ? startNote() : null,
     el('div', { class: 'empty-actions' }, [
-      el('button', { class: 'btn btn-tertiary', text: 'העלאת גיבוי', onClick: () => runRestore() }),
-      el('button', { class: 'btn btn-tertiary', text: 'יצירת טיול חדש', onClick: () => openTripWizard(null) }),
+      el('button', { class: 'btn btn-primary', text: 'יצירת טיול', onClick: () => openTripWizard(null) }),
+      el('button', { class: 'btn btn-tertiary', text: 'שחזור מגיבוי', onClick: () => runRestore() }),
     ]),
   ], 'card-gap empty-no-trip');
 }

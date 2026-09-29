@@ -23,15 +23,14 @@ const STEPS = [
   { label: 'רשימת הכנה', optional: true },
 ];
 
-/** הערה שמופיעה בשלב שאין בו אף שדה חובה — הכוכבית לא מופיעה סתם. */
-const optionalNote = text => el('p', { class: 'sub', style: 'margin:0 0 12px', text });
+const hint = text => el('p', { class: 'wizard-hint', text });
 
 export function openTripWizard(existing) {
   let trip = existing;
-  let step = existing ? 0 : 0;
+  let step = 0;
 
-  const body = el('div');
-  const actions = el('div', { style: 'display:flex; gap:8px; width:100%' });
+  const body = el('div', { class: 'trip-wizard' });
+  const actions = el('div', { class: 'trip-wizard-actions' });
   const s = sheet({
     title: existing ? 'עריכת טיול' : 'טיול חדש',
     body,
@@ -45,8 +44,18 @@ export function openTripWizard(existing) {
     actions.replaceChildren();
 
     const { label, optional } = STEPS[step];
-    body.append(el('div', { class: 'sub', style: 'margin-block-end:8px',
-      text: `שלב ${step + 1} מתוך ${STEPS.length} · ${label}${optional ? ' · אפשר לדלג' : ''}` }));
+    body.append(
+      el('div', { class: 'wizard-progress', text: `שלב ${step + 1} מתוך ${STEPS.length}` }),
+      el('h2', { class: 'wizard-step-title', text: label }),
+      el('p', { class: 'wizard-step-lead', text: [
+        'שם הטיול הוא הדבר היחיד שחובה למלא כדי להתחיל.',
+        'אפשר לדלג. יעדים מארגנים את התכנון וההוצאות לפי מקום.',
+        'אפשר לדלג. תקציב מציג כמה נשאר לטיול ולכל יעד.',
+        'אפשר לדלג. בוחרים משימות מוכנות ומסמנים אותן בהמשך.',
+      ][step] }),
+      el('div', { class: `wizard-optional${optional ? '' : ' is-required'}`,
+        text: optional ? 'אפשר אחר כך' : 'שם הטיול חובה' }),
+    );
 
     if (step === 0) await stepDetails();
     else if (step === 1) await stepSegments();
@@ -83,12 +92,13 @@ export function openTripWizard(existing) {
       el('option', { value: c, selected: (trip?.currency || 'ILS') === c, text: cur.label(c) })));
 
     body.append(
-      requiredNote('חובה למלא רק שדה שמסומן בכוכבית — כאן שם הטיול בלבד. לחצו כאן כדי לסמן אותו.'),
+      requiredNote('שם הטיול הוא שדה החובה היחיד.'),
       fieldRow('שם הטיול', name, { required: true }),
+      hint('כך הטיול יופיע ברשימה ובבורר הטיולים.'),
       fieldRow('טווח התאריכים של הטיול', range.node),
+      hint('אפשר אחר כך · התאריכים יוצרים את לוח הימים של הטיול.'),
       fieldRow('מטבע ראשי', currency),
-      el('p', { class: 'sub',
-        text: 'התאריכים כאן הם מקור האמת לכל לוח הזמנים, ואפשר להשלים אותם אחר כך. גם המטבע והתקציב ניתנים לשינוי בכל רגע.' }),
+      hint('המטבע של התקציב והסיכום. ברירת המחדל היא שקל; אפשר לשנות בהמשך.'),
     );
 
     nav({
@@ -126,7 +136,7 @@ export function openTripWizard(existing) {
     const range = dateRangeField({ ...prefill, label: 'טווח התאריכים ביעד' });
 
     body.append(
-      requiredNote('אפשר לדלג על השלב הזה. מי שמוסיף יעד — שם היעד והתאריכים הם חובה. לחצו כאן כדי לסמן אותם.'),
+      hint('מוסיפים יעד רק אם רוצים לחלק את הטיול למקומות. אפשר להוסיף גם אחרי היצירה.'),
       segs.length
         ? el('div', {}, segs.map(seg => el('div', { class: 'row' }, [
             el('div', { class: 'grow' }, [
@@ -143,12 +153,16 @@ export function openTripWizard(existing) {
       el('div', { class: 'hairline', style: 'margin-block-start:12px; padding-block-start:12px' }, [
         fieldRow('יעד חדש', city, { required: true }),
         fieldRow('טווח התאריכים ביעד', range.node, { required: true }),
+        hint('אם מוסיפים יעד, צריך שם וטווח תאריכים. פריטים והוצאות יופיעו לפי יעד.'),
         el('button', {
           class: 'btn btn-secondary btn-block', style: 'margin-block-start:8px',
           html: `${icon('plus')}<span>הוסף יעד</span>`,
           onClick: async () => {
             try {
               const picked = range.read();
+              if (!city.value.trim() || !picked.startDate || !picked.endDate) {
+                throw new Error('כדי להוסיף יעד צריך שם וטווח תאריכים');
+              }
               const covering = await ensureTripCovers(trip, picked.startDate, picked.endDate);
               if (!covering) return;
               trip = covering;
@@ -175,6 +189,11 @@ export function openTripWizard(existing) {
     // התקרה וההקצאות נשמרות כמספרים במטבע הטיול, ולכן סכום שהוזן בשקלים
     // (או בכל מטבע פעיל אחר) מומר כאן לפי השער השמור.
     const currencies = await cur.listActive();
+    // מטבע חדש שנבחר בשלב הראשון עדיין לא בהכרח קיבל שער ברקע.
+    // אופליין או כשל רשת אינם עוצרים את האשף: הזנה במטבע הטיול עדיין תקינה.
+    if (trip.currency !== 'ILS' && !(await rates.getRate(trip.currency))) {
+      try { await rates.autoRefresh([trip.currency]); } catch { /* ההסבר מוצג להלן */ }
+    }
     const fx = await rates.rateMap([...currencies, trip.currency]);
     const field = amount => amountField({
       amount: amount || '', currency: trip.currency, currencies, convertTo: trip.currency, fx,
@@ -184,10 +203,13 @@ export function openTripWizard(existing) {
     const inputs = new Map();
 
     body.append(
-      optionalNote('אין בשלב הזה שדות חובה. תקציב שלא נקבע עכשיו לא חוסם דבר, ואפשר להזין אותו מאוחר יותר.'),
+      hint('אין חובה להגדיר תקציב. אפשר לעקוב אחרי הוצאות ולהוסיף תקרה בהמשך.'),
+      ...(trip.currency !== 'ILS' && !fx[trip.currency]
+        ? [el('p', { class: 'wizard-rate-warning', role: 'status',
+          text: `אין כרגע שער שמור ל-${trip.currency}. אפשר להזין תקציב ב-${trip.currency}, לדלג, או להגדיר שער בהגדרות ולחזור לכאן.` })]
+        : []),
       fieldRow('תקרת תקציב כוללת', ceiling.node),
-      el('p', { class: 'sub', style: 'margin:6px 0 0',
-        text: `התקרה וההקצאות נשמרות במטבע הטיול (${cur.symbol(trip.currency)}). אפשר להזין בשקלים או בכל מטבע פעיל, והסכום יומר לפי השער השמור.` }),
+      hint(`התקרה וההקצאות נשמרות ב-${cur.symbol(trip.currency)}. סכום במטבע אחר יומר רק כשיש שער שמור.`),
     );
     if (segs.length) {
       body.append(el('div', { class: 'field-label', style: 'margin-block-start:16px', text: 'הקצאה לכל יעד' }));
@@ -202,6 +224,8 @@ export function openTripWizard(existing) {
     }
 
     const inTrip = (money, label) => {
+      // אפס אינו תלוי בשער; מאפשר לנקות תקרה גם כשהמכשיר אופליין.
+      if (money.read().amount === 0) return 0;
       const value = money.readIn(trip.currency);
       if (value === null) {
         throw new Error(`אין שער המרה ל-${money.read().currency}, ולכן ${label} אינו ניתן להמרה למטבע הטיול`);
@@ -212,9 +236,15 @@ export function openTripWizard(existing) {
     nav({
       onNext: async () => {
         try {
-          trip = await trips.updateTrip({ ...trip, totalBudget: inTrip(ceiling, 'התקציב') });
-          for (const { seg, input } of inputs.values()) {
-            await it.saveSegment(trip.id, { ...seg, allocation: inTrip(input, `התקציב של ${seg.city}`) });
+          // כל ההמרות נבדקות לפני הכתיבה הראשונה. שגיאה בשער של יעד אחר
+          // לא משאירה תקרה חדשה לצד הקצאות ישנות.
+          const totalBudget = inTrip(ceiling, 'התקציב');
+          const allocations = [...inputs.values()].map(({ seg, input }) => ({
+            seg, allocation: inTrip(input, `התקציב של ${seg.city}`),
+          }));
+          trip = await trips.updateTrip({ ...trip, totalBudget });
+          for (const { seg, allocation } of allocations) {
+            await it.saveSegment(trip.id, { ...seg, allocation });
           }
           const b = await trips.budgetSummary(trip.id);
           if (b.over) toast(`ההקצאות חורגות מהתקרה ב-${fmtMoney(-b.unallocated, trip.currency)}`, 'warning');
@@ -227,8 +257,7 @@ export function openTripWizard(existing) {
 
   // ---- שלב 4: מילוי ראשוני של רשימת ההכנה ----
   async function stepPrep() {
-    body.append(optionalNote(
-      'גם כאן אין חובה: אפשר למלא את רשימת ההכנה מהקטלוג עכשיו, או לסיים ולעשות זאת בכל שלב מהטאב "הכנה".'));
+    body.append(hint('אפשר לבחור משימות מהקטלוג עכשיו, להוסיף משימות משלכם בטאב ״הכנה״, או לסיים בלי רשימה.'));
     // הרשימות הקבועות מגיעות מ-prep.STAGES, ולכן רשימה חדשה שנוספת שם
     // מופיעה כאן מעצמה ולא נשכחת באשף
     for (const [stage, label] of Object.entries(prep.STAGES)) {

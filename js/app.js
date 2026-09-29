@@ -135,7 +135,9 @@ function buildNav() {
       'aria-current': s.key === current ? 'page' : 'false',
       onClick: () => navigate(s.key),
     }, [
-      el('span', { html: icon(s.iconName) }),
+      s.key === 'settings'
+        ? el('img', { class: 'nav-logo', src: './icons/icon-192.png', alt: '', 'aria-hidden': 'true' })
+        : el('span', { html: icon(s.iconName) }),
       el('span', { text: s.label }),
     ])
   ));

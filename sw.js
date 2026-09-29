@@ -1,5 +1,5 @@
 // מטמון האפליקציה. שינוי המספר כאן מפיל את המטמון הישן בהתקנה הבאה.
-const CACHE = 'trip-planner-v25';
+const CACHE = 'trip-planner-v26';
 
 const SHELL = [
   './',
@@ -15,14 +15,6 @@ const SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
-  './img/welcome/wizard-step1.webp',
-  './img/welcome/date-range.webp',
-  './img/welcome/catalog-pick.webp',
-  './img/welcome/prep-list.webp',
-  './img/welcome/plan-days.webp',
-  './img/welcome/plan-segments.webp',
-  './img/welcome/expense-add.webp',
-  './img/welcome/summary-budget.webp',
   './js/app.js',
   './js/db.js',
   './js/ui.js',
@@ -30,6 +22,7 @@ const SHELL = [
   './js/daterange.js',
   './js/trips.js',
   './js/itinerary.js',
+  './js/segment-display.js',
   './js/expenses.js',
   './js/money.js',
   './js/budgets.js',

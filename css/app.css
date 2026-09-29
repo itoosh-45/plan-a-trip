@@ -27,14 +27,14 @@ html, body {
 /* כותרת כרטיס — תווית קטנה מעל התוכן, לא כותרת שנייה */
 .card-title {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: var(--text-group);
   font-weight: 600;
   color: var(--color-text);
   letter-spacing: -0.01em;
 }
 
 /* שם של פריט בתוך שורה */
-.row-title { font-size: var(--text-sm); font-weight: 500; }
+.row-title { font-size: var(--text-list); font-weight: 500; overflow-wrap: anywhere; }
 
 /* מצב ריק: לא כותרת כרטיס, ולכן לא מתכווץ ל-12px אפור */
 .empty-title { font-size: var(--text-sm); font-weight: 600; margin-block-end: 4px; }
@@ -42,6 +42,7 @@ html, body {
 .empty-no-trip { text-align: center; }
 .empty-no-trip .empty-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
   margin-block-start: 14px;
@@ -145,12 +146,25 @@ body {
 .field:focus { outline: 2px solid var(--color-accent); outline-offset: 0; }
 .field-label {
   display: block;
-  font-size: var(--text-xs);
-  font-weight: 400;
-  color: var(--color-text-dim);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
   margin-block-end: 6px;
 }
 .field-row { margin-block-start: 12px; }
+.trip-wizard .field-label { font-size: 14px; font-weight: 600; color: var(--color-text); }
+.wizard-progress { font-size: 12px; color: var(--color-text-mute); }
+.wizard-step-title { margin: 4px 0 2px; font-size: 20px; font-weight: 600; line-height: 1.35; }
+.wizard-step-lead { margin: 0 0 8px; font-size: 14px; font-weight: 500;
+  line-height: 1.55; color: var(--color-text-dim); }
+.wizard-optional { font-size: 12px; font-weight: 600; color: var(--color-text-dim); }
+.wizard-optional.is-required { color: var(--color-highlight); }
+.wizard-hint { margin: 5px 0 10px; font-size: 13px; font-weight: 500;
+  line-height: 1.45; color: var(--color-text-dim); }
+.wizard-rate-warning { margin: 12px 0; padding: 10px 12px; border-radius: var(--radius-control);
+  background: var(--color-surface-2); color: var(--color-text-dim);
+  font-size: 13px; font-weight: 500; line-height: 1.45; }
+.trip-wizard-actions { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
 
 .chip {
   display: inline-flex;
@@ -219,7 +233,7 @@ body {
   padding: 8px 4px;
   background: none;
   border: 0;
-  font-size: var(--text-11);
+  font-size: var(--text-xs);
   font-weight: 400;
   font-family: inherit;
   color: var(--color-text-mute);
@@ -227,6 +241,9 @@ body {
 }
 /* הפריט הפעיל מסומן בכהות ובמשקל, לא בצבע. */
 #nav button[aria-current="page"] { color: var(--color-text); font-weight: 500; }
+.nav-logo { display: block; width: 20px; height: 20px; border-radius: 5px;
+  object-fit: contain; opacity: 0.78; }
+#nav button[aria-current="page"] .nav-logo { opacity: 1; }
 
 .sheet-backdrop {
   position: fixed;
@@ -512,10 +529,10 @@ body {
   align-items: center;
   gap: 8px;
   margin-block: 14px 6px;
-  font-size: var(--text-xs);
-  font-weight: 500;
+  font-size: var(--text-group);
+  font-weight: 600;
   letter-spacing: var(--tracking-head);
-  color: var(--color-text-mute);
+  color: var(--color-text-dim);
 }
 .zone-label::after {
   content: '';
@@ -523,16 +540,17 @@ body {
   height: 1px;
   background: var(--color-hairline);
 }
-/* כותרת קטגוריה בתוך שלב: קו מפריד לרוחב, וטקסט קטן שלא מתחרה בכותרת הכרטיס */
+/* כותרת קטגוריה בתוך שלב: קריאה גם במובייל, בלי מסגרת חדשה */
 .cat-head {
   margin-block: 14px 2px;
-  font-size: var(--text-xs);
-  font-weight: 500;
+  font-size: var(--text-group);
+  font-weight: 600;
   letter-spacing: var(--tracking-head);
-  color: var(--color-text-mute);
-  min-height: 36px;
+  color: var(--color-text-dim);
+  min-height: var(--touch-min);
 }
-.cat-head .grow { flex: 0 0 auto; }
+.cat-head .grow { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.cat-head .sub { font-size: 12px; font-weight: 400; white-space: nowrap; }
 .cat-head::after {
   content: '';
   flex: 1;
@@ -583,11 +601,15 @@ body {
   border: 0;
   padding: 0;
   font: inherit;
+  font-size: var(--text-list);
+  font-weight: 500;
+  line-height: 1.45;
   color: inherit;
   text-align: start;
   cursor: pointer;
   overflow-wrap: anywhere;
 }
+.task .title .sub { font-size: 13px; font-weight: 400; line-height: 1.5; }
 .task.done .title { text-decoration: line-through; color: var(--color-text-dim); }
 
 .tick {
@@ -643,7 +665,7 @@ body {
   gap: 4px;
   padding: 3px 10px;
   border-radius: 999px;
-  font-size: var(--text-11);
+  font-size: var(--text-xs);
   font-weight: 500;
 }
 .pill.ok   { background: color-mix(in srgb, var(--color-success) 12%, transparent); color: var(--color-success); }
@@ -659,7 +681,7 @@ body {
 .row + .row { border-block-start: 1px solid var(--color-hairline); }
 .row .grow { flex: 1; min-width: 0; }
 .sub {
-  font-size: var(--text-11);
+  font-size: var(--text-body);
   font-weight: 400;
   color: var(--color-text-mute);
   margin-block-start: 2px;
@@ -855,7 +877,7 @@ body {
   text-align: start;
 }
 
-/* ---- מסכי הפתיחה של כניסה ראשונה ---- */
+/* ---- מסך פתיחה יחיד ---- */
 
 /* מעל הניווט (30) והחלונות (40), מתחת להודעות (60) */
 .welcome {
@@ -909,6 +931,11 @@ body {
   justify-content: center;
   text-align: center;
 }
+.welcome-actions { display: grid; gap: 10px; width: min(100%, 360px); margin: 20px auto 0; }
+.welcome-storage { color: var(--color-text-dim); font-size: 13px; font-weight: 500; margin: 20px 0 0; }
+.welcome-dismiss { align-self: center; min-height: var(--touch-min); margin-block-start: 8px;
+  padding: 8px 16px; background: none; border: 0; color: var(--color-text-dim);
+  font: inherit; cursor: pointer; }
 
 .welcome-title {
   margin: 0 0 10px;

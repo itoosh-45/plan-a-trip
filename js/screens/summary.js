@@ -3,6 +3,8 @@ import * as money from '../money.js';
 import * as rates from '../rates.js';
 import { el, card, icon, ilsNote, ilsText, ilsPairNote, fmtMoney, fmtMoneyHtml, fmtDateRange } from '../ui.js';
 import { noTripCard } from './no-trip.js';
+import * as it from '../itinerary.js';
+import { segmentGroups, displaySegmentTotals } from '../segment-display.js';
 
 let chartInstance = null;
 
@@ -40,10 +42,11 @@ export async function mount(host, tripId) {
     return;
   }
 
-  const [trip, sum, planned, budgetSummary] = await Promise.all([
+  const [trip, sum, planned, budgetSummary, segs] = await Promise.all([
     trips.getTrip(tripId), money.tripTotals(tripId), money.plannedTotal(tripId),
-    money.budgetByCategory(tripId),
+    money.budgetByCategory(tripId), it.listSegments(tripId),
   ]);
+  const byDisplaySegment = displaySegmentTotals(segmentGroups(segs), sum.bySegment);
   // תכנון התקציב נערך במסך ההוצאות. כאן הוא מוצג בלבד, לצד מה שבפועל.
   const budgetOf = new Map(budgetSummary.rows.map(r => [r.id, r]));
   const c = trip.currency;
@@ -111,7 +114,7 @@ export async function mount(host, tripId) {
 
   host.append(card([
     el('div', { class: 'card-title', text: 'הוצאות לפי יעד' }),
-    ...sum.bySegment.map(seg => {
+    ...byDisplaySegment.map(seg => {
       const pct = seg.allocation ? Math.min(Math.round((seg.amount / seg.allocation) * 100), 100) : 0;
       return el('div', { style: 'padding-block:12px; border-block-start:1px solid var(--color-hairline)' }, [
         el('div', { style: 'display:flex; align-items:center; gap:8px' }, [

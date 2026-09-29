@@ -899,7 +899,7 @@ export async function mount(host, tripId) {
     introPoints(),
     el('button', {
       class: 'btn btn-tertiary btn-block', style: 'margin-block-start:14px',
-      text: 'הצג שוב את מסכי הפתיחה', onClick: () => openWelcome(),
+      text: 'הצג שוב את מסך הפתיחה', onClick: () => openWelcome(),
     }),
   ]));
 

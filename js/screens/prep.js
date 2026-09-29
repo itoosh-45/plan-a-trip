@@ -4,6 +4,7 @@ import * as prep from '../prep.js';
 import * as catalog from '../catalog.js';
 import * as imported from '../imported.js';
 import * as rates from '../rates.js';
+import { segmentGroups } from '../segment-display.js';
 import { el, card, sheet, toast, confirmDanger, icon, ilsText, fmtMoneyHtml } from '../ui.js';
 import { refresh } from '../app.js';
 import { noTripCard } from './no-trip.js';
@@ -44,9 +45,15 @@ async function openTaskSheet(tripId, existing, stage, category) {
       el('option', { value: c, selected: c === prep.OTHER, text: c })));
   });
 
+  const groups = segmentGroups(segs);
+  const singlePlace = segs.filter(s => s.kind !== 'general').length === 1;
+  const segmentChoices = singlePlace
+    ? [{ ...groups[0].segment, id: existing?.segmentId && groups[0].ids.includes(existing.segmentId)
+      ? existing.segmentId : groups[0].segment.id }]
+    : segs;
   const segment = el('select', { class: 'field' }, [
     el('option', { value: '', text: 'ללא שיוך ליעד' }),
-    ...segs.map(sg => el('option', { value: sg.id, selected: existing?.segmentId === sg.id, text: sg.city })),
+    ...segmentChoices.map(sg => el('option', { value: sg.id, selected: existing?.segmentId === sg.id, text: sg.city })),
   ]);
   const amount = el('input', {
     class: 'field', type: 'number', inputmode: 'decimal', step: '0.01', value: existing?.plannedAmount ?? '',
@@ -161,7 +168,7 @@ function enableDrag(node, tripId, task) {
 }
 
 function taskRow(tripId, task, segs, currency, rate) {
-  const seg = segs.find(x => x.id === task.segmentId);
+  const seg = segmentGroups(segs).find(group => group.ids.includes(task.segmentId))?.segment;
   const node = el('div', {
     class: `task ${task.done ? 'done' : ''}`.trim(),
     'data-urgency': task.urgency || 'normal',

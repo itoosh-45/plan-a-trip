@@ -13,6 +13,7 @@ import {
 import { dateRangeField } from '../daterange.js';
 import { refresh, holdRefresh, releaseRefresh } from '../app.js';
 import { noTripCard } from './no-trip.js';
+import { segmentGroups, displaySegmentTotals } from '../segment-display.js';
 
 let openSegmentId = null;   // רק בתצוגת "לפי יעדים": היעד שנכנסו אליו
 
@@ -466,9 +467,10 @@ function groupCard(ctx, group, { showSegment = false, bounds = {} } = {}) {
 
 /** כותרת היעד. יושבת מחוץ לקבוצות, ולכן קיפול קבוצה לעולם אינו מסתיר אותה. */
 function segmentHeaderCard(ctx, seg) {
-  const stat = ctx.totals.bySegment.find(x => x.id === seg.id)
+  const stat = ctx.displayTotals.find(x => x.id === seg.id)
     || { amount: 0, allocation: 0, over: false };
-  const tasks = ctx.tasks.filter(t => t.segmentId === seg.id);
+  const ids = stat.ids || [seg.id];
+  const tasks = ctx.tasks.filter(t => ids.includes(t.segmentId));
   const key = `c:${seg.id}`;
   const openList = !ctx.prefs.collapsed.has(key);
 
@@ -610,6 +612,11 @@ function renderDays(ctx, days) {
   const nodes = [];
   const seenSegments = new Set();
 
+  if (ctx.singlePlace) {
+    nodes.push(segmentHeaderCard(ctx, ctx.singlePlace));
+    seenSegments.add(ctx.singlePlace.id);
+  }
+
   for (const group of groups) {
     const seg = ctx.segs.find(s => s.id === group.segmentId);
     if (seg && seg.kind !== 'general' && !seenSegments.has(seg.id)) {
@@ -625,8 +632,10 @@ function renderDays(ctx, days) {
 }
 
 function renderSegmentDays(ctx, seg) {
-  const days = it.segmentDays(seg);
-  const bounds = { min: seg.startDate || undefined, max: seg.endDate || undefined };
+  // כשהיעד היחיד כולל בתצוגה גם את ״כללי״, ימים מחוץ לטווח היעד
+  // חייבים להישאר נגישים במסך היעד.
+  const days = ctx.singlePlace?.id === seg.id ? it.tripDays(ctx.trip, ctx.segs) : it.segmentDays(seg);
+  const bounds = ctx.singlePlace?.id === seg.id ? {} : { min: seg.startDate || undefined, max: seg.endDate || undefined };
   const groups = it.groupDays(days, ctx.prefs.grouping, ctx.segs);
   const nodes = groups.map(group => (ctx.prefs.grouping === 'days'
     ? card([dayBlock(ctx, group.from, { bounds })], 'card-gap')
@@ -635,8 +644,8 @@ function renderSegmentDays(ctx, seg) {
 }
 
 function renderSegmentList(ctx) {
-  const nodes = ctx.segs.map(seg => {
-    const stat = ctx.totals.bySegment.find(x => x.id === seg.id) || { amount: 0, allocation: 0, over: false };
+  const nodes = ctx.displayGroups.map(({ segment: seg }) => {
+    const stat = ctx.displayTotals.find(x => x.id === seg.id) || { amount: 0, allocation: 0, over: false };
     const pct = stat.allocation ? Math.min(Math.round((stat.amount / stat.allocation) * 100), 100) : 0;
     return card([
       el('button', {
@@ -697,10 +706,14 @@ export async function mount(host, tripId) {
     trip, segs, prefs, tasks, totals, fx, rate: fx[(trip.currency || 'ILS').toUpperCase()],
     byDate: it.itemsByDate(items),
     generalId: segs.find(s => s.kind === 'general')?.id ?? null,
+    displayGroups: segmentGroups(segs),
   };
+  ctx.displayTotals = displaySegmentTotals(ctx.displayGroups, totals.bySegment);
+  ctx.singlePlace = segs.filter(s => s.kind !== 'general').length === 1
+    ? segs.find(s => s.kind !== 'general') : null;
 
   const openSeg = prefs.view === 'segments' && openSegmentId
-    ? segs.find(s => s.id === openSegmentId)
+    ? ctx.displayGroups.find(g => g.segment.id === openSegmentId)?.segment
     : null;
   if (prefs.view === 'segments' && openSegmentId && !openSeg) openSegmentId = null;
 

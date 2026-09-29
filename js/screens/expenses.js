@@ -11,6 +11,7 @@ import {
 } from '../ui.js';
 import { refresh } from '../app.js';
 import { noTripCard } from './no-trip.js';
+import { segmentGroups, displaySegmentTotals } from '../segment-display.js';
 
 let segmentFilter = '';
 let walletOpen = false;
@@ -27,7 +28,10 @@ async function openExpenseSheet(trip, existing, kind = 'expense') {
   const [cats, segs, currencies] = await Promise.all([
     trips.categories(trip.id), it.listSegments(trip.id), cur.listActive(),
   ]);
-  const defaultSegment = existing?.segmentId || await it.defaultSegmentId(trip.id);
+  const groups = segmentGroups(segs);
+  const singlePlace = segs.filter(s => s.kind !== 'general').length === 1;
+  const defaultSegment = existing?.segmentId || (singlePlace
+    ? groups[0].segment.id : await it.defaultSegmentId(trip.id));
   const fx = await rates.rateMap([...currencies, trip.currency]);
 
   // אפשר להזין בשקלים גם בטיול שמתנהל במטבע אחר: השדה מראה כמה זה במטבע
@@ -39,7 +43,13 @@ async function openExpenseSheet(trip, existing, kind = 'expense') {
     convertTo: trip.currency,
     fx,
   });
-  const segment = el('select', { class: 'field' }, segs.map(s =>
+  // רשומה ישנה ששויכה ל״כללי״ שומרת את ה-ID שלה גם כשהיעד היחיד
+  // מוצג בשמה. עריכה של סכום או פירוט לא מעבירה אותה בשקט ליעד אחר.
+  const choices = singlePlace
+    ? [{ ...groups[0].segment, id: existing?.segmentId && groups[0].ids.includes(existing.segmentId)
+      ? existing.segmentId : groups[0].segment.id }]
+    : segs;
+  const segment = el('select', { class: 'field' }, choices.map(s =>
     el('option', { value: s.id, selected: s.id === defaultSegment, text: s.city })));
   const category = el('select', { class: 'field' }, [
     el('option', { value: '', text: 'ללא קטגוריה' }),
@@ -168,7 +178,7 @@ function walletCard(trip, balances, cashRows, cats, segs, fx) {
         el('span', { class: 'grow' }, [
           el('span', { style: 'display:block', text: r.note || 'הוצאה במזומן' }),
           el('span', { class: 'sub',
-            text: `${c.name} · ${segs.find(sg => sg.id === r.segmentId)?.city || 'כללי'} · ${fmtDate(r.date)}` }),
+            text: `${c.name} · ${segmentGroups(segs).find(g => g.ids.includes(r.segmentId))?.segment.city || 'כללי'} · ${fmtDate(r.date)}` }),
         ]),
         el('span', { style: 'text-align:end' }, [
           el('div', { class: 'num', html: `−${fmtMoneyHtml(r.amount, r.currency)}` }),
@@ -437,6 +447,9 @@ export async function mount(host, tripId) {
     trip.currency, ...Object.keys(totals.balances), ...rows.map(r => r.currency),
   ]);
   const tripRate = fx[(trip.currency || 'ILS').toUpperCase()];
+  const groups = segmentGroups(segs);
+  const displayTotals = displaySegmentTotals(groups, totals.bySegment);
+  if (segmentFilter && !groups.some(g => g.segment.id === segmentFilter)) segmentFilter = '';
 
   const cashRows = rows.filter(r => r.kind === 'cashSpend');
   host.append(walletCard(trip, totals.balances, cashRows, cats, segs, fx));
@@ -458,20 +471,20 @@ export async function mount(host, tripId) {
       class: 'chip', 'aria-pressed': String(!segmentFilter), text: 'כל היעדים',
       onClick: () => { segmentFilter = ''; refresh(); },
     }),
-    ...segs.map(sg => el('button', {
+    ...groups.map(({ segment: sg }) => el('button', {
       class: 'chip', 'aria-pressed': String(segmentFilter === sg.id), text: sg.city,
       onClick: () => { segmentFilter = segmentFilter === sg.id ? '' : sg.id; refresh(); },
     })),
   ]));
 
-  const visible = segs.filter(sg => !segmentFilter || sg.id === segmentFilter);
+  const visible = groups.filter(g => !segmentFilter || g.segment.id === segmentFilter);
   let shown = 0;
 
-  for (const seg of visible) {
-    const group = rows.filter(r => r.segmentId === seg.id && r.kind !== 'cashSpend');
+  for (const { segment: seg, ids } of visible) {
+    const group = rows.filter(r => ids.includes(r.segmentId) && r.kind !== 'cashSpend');
     if (!group.length) continue;
     shown += group.length;
-    const stat = totals.bySegment.find(x => x.id === seg.id) || { amount: 0, allocation: 0, over: false };
+    const stat = displayTotals.find(x => x.id === seg.id) || { amount: 0, allocation: 0, over: false };
 
     host.append(card([
       el('div', { style: 'display:flex; align-items:center; gap:8px; margin-block-end:4px' }, [
