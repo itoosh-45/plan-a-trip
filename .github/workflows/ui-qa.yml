@@ -32,6 +32,10 @@ jobs:
         if: matrix.browser == 'chromium'
         env:
           OLD_ROOT: ${{ github.workspace }}/old-main
+      - run: node scripts/sw-upgrade-qa.mjs
+        if: matrix.browser == 'chromium'
+        env:
+          OLD_ROOT: ${{ github.workspace }}/old-main
       - uses: actions/upload-artifact@v4
         if: always()
         with:

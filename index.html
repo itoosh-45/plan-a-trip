@@ -66,11 +66,16 @@
       // ולכן בדיקת העדכון רואה גרסה חדשה כבר בפתיחה הראשונה שאחרי ההעלאה.
       .register('./sw.js', { updateViaCache: 'none' })
       .then(reg => {
-        // אפליקציה שנשארת פתוחה ימים לא מקבלת בדיקת עדכון מעצמה. חזרה
-        // מהרקע היא הרגע הטבעי לבדוק, והבדיקה שקטה ונכשלת בלי רעש.
+        // גם טאב שנשאר פתוח בחזית יזהה פריסה חדשה בלי לחכות לניווט.
+        const checkForUpdate = () => reg.update().catch(() => {});
+        setInterval(() => {
+          if (!document.hidden && navigator.onLine) checkForUpdate();
+        }, 15 * 60 * 1000);
+        // חזרה מהרקע או חזרת הרשת בודקות עדכון מיד; כשל רשת שקט.
         document.addEventListener('visibilitychange', () => {
-          if (!document.hidden) reg.update().catch(() => {});
+          if (!document.hidden) checkForUpdate();
         });
+        window.addEventListener('online', checkForUpdate);
       })
       .catch(() => { /* אופליין יופעל בטעינה הבאה */ });
   }
