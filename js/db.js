@@ -221,21 +221,28 @@ export async function importAll(payload, mode = 'replace') {
   for (const [name, rows] of Object.entries(payload.stores)) {
     if (!Array.isArray(rows)) throw new Error(`המקטע "${name}" בקובץ הייבוא אינו רשימה`);
     const key = SCHEMA[name].keyPath;
-    const missing = rows.findIndex(r => !r || typeof r !== 'object' || !r[key]);
+    const missing = rows.findIndex(r => !r || typeof r !== 'object' || typeof r[key] !== 'string' || !r[key].trim());
     if (missing !== -1) throw new Error(`בטבלה "${name}", רשומה ${missing + 1} חסרה שדה ${key}`);
   }
 
-  if (mode === 'replace') await wipe(true);
-
   const counts = {};
   const names = Object.keys(payload.stores);
-  const t = await tx(names, 'readwrite');
-  for (const name of names) {
-    const os = t.objectStore(name);
-    for (const row of payload.stores[name]) os.put(row);
-    counts[name] = payload.stores[name].length;
+  // Replace in the same transaction: an interrupted/quota-failed restore keeps the old data.
+  const t = await tx(mode === 'replace' ? Object.keys(SCHEMA) : names, 'readwrite');
+  const completion = done(t);
+  try {
+    if (mode === 'replace') for (const name of Object.keys(SCHEMA)) t.objectStore(name).clear();
+    for (const name of names) {
+      const os = t.objectStore(name);
+      for (const row of payload.stores[name]) os.put(row);
+      counts[name] = payload.stores[name].length;
+    }
+  } catch (error) {
+    t.abort();
+    await completion.catch(() => {});
+    throw error;
   }
-  await done(t);
+  await completion;
   emit('*', 'import', null);
   return { counts };
 }
@@ -246,4 +253,27 @@ export async function wipe(silent = false) {
   for (const name of names) t.objectStore(name).clear();
   await done(t);
   if (!silent) emit('*', 'wipe', null);
+}
+
+/** Replace one trip atomically; existing unrelated trips and device settings are retained. */
+export async function replaceTripData(stores, tripId) {
+  if (!tripId || !Array.isArray(stores.trips) || stores.trips.length !== 1 || stores.trips[0].id !== tripId) throw new Error('הטיול לשחזור אינו תקין');
+  const names = ['trips', ...TRIP_SCOPED];
+  for (const name of names) {
+    if (!Array.isArray(stores[name]) || stores[name].some(row => typeof row?.id !== 'string' || !row.id.trim() || (name !== 'trips' && row.tripId !== tripId))) throw new Error('רשומות הטיול לשחזור אינן תקינות');
+  }
+  const t = await tx(names, 'readwrite');
+  const completion = done(t);
+  t.objectStore('trips').put(stores.trips[0]);
+  for (const name of TRIP_SCOPED) {
+    const os = t.objectStore(name);
+    const cursor = os.index('tripId').openCursor(IDBKeyRange.only(tripId));
+    cursor.onsuccess = () => {
+      if (cursor.result) { cursor.result.delete(); cursor.result.continue(); }
+      else for (const row of stores[name]) os.put(row);
+    };
+  }
+  await completion;
+  emit('*', 'restoreTrip', tripId);
+  return { counts: Object.fromEntries(names.map(name => [name, stores[name].length])) };
 }

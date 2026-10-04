@@ -1,6 +1,15 @@
 import * as db from './db.js';
 import * as catalog from './catalog.js';
 
+export function readQuantity(value) {
+  if (value == null || value === '') return 1;
+  const quantity = Number(value);
+  if (!Number.isSafeInteger(quantity) || quantity < 1) {
+    throw new Error('הכמות חייבת להיות מספר שלם וחיובי');
+  }
+  return quantity;
+}
+
 /** ארבע רשימות קבועות, וכולן גלויות תמיד. אין מצב שמסתיר תוכן. */
 export const STAGES = {
   before: 'לפני הטיול', during: 'במהלך השהייה', after: 'בחזרה', gear: 'ציוד מיוחד',
@@ -100,7 +109,7 @@ function compare(a, b) {
 export async function listTasks(tripId, stage) {
   const rows = await withCategory(await db.all(db.STORES.prepTasks, tripId));
   const filtered = stage ? rows.filter(t => t.stage === stage) : rows;
-  return filtered.sort(compare);
+  return filtered.map(t => ({ ...t, quantity: readQuantity(t.quantity) })).sort(compare);
 }
 
 /** מזהי הקטלוג שכבר נמצאים ברשימה של הטיול. בורר הקטלוג לא מציג אותם. */
@@ -137,6 +146,7 @@ export async function saveTask(tripId, task) {
     id: task.id,
     tripId,
     title,
+    quantity: readQuantity(task.quantity),
     stage,
     urgency,
     category: (task.category || '').trim() || OTHER,

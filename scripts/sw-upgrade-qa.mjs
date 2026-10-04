@@ -21,10 +21,12 @@ try {
   server = await serve(process.env.OLD_ROOT);
   browser = await chromium.launch();
   const context = await browser.newContext({ serviceWorkers: 'allow' });
+  await context.route(/^https?:\/\/(?!127\.0\.0\.1)/, route => route.abort());
   const page = await context.newPage();
   await page.goto(base);
   await page.evaluate(() => navigator.serviceWorker.ready);
-  await page.reload(); // הלקוח עכשיו נשלט על ידי v25
+  await page.reload(); // The existing release controls the client before the upgrade.
+  await page.waitForLoadState('networkidle');
   assert.ok(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL.endsWith('/sw.js')));
   const old = await page.evaluate(async () => {
     const trips = await import('./js/trips.js');
@@ -32,24 +34,35 @@ try {
     localStorage.setItem('activeTripId', trip.id);
     return trip;
   });
-  assert.ok((await page.evaluate(() => caches.keys())).includes('trip-planner-v25'));
+  const oldCaches = await page.evaluate(() => caches.keys());
+  assert.ok(oldCaches.some(key => key.startsWith('trip-planner-')));
 
   server.kill();
   await new Promise(resolve => server.once('exit', resolve));
   server = await serve(process.cwd());
 
-  const load = page.waitForEvent('load', { timeout: 30_000 });
   await page.evaluate(async () => (await navigator.serviceWorker.ready).update());
-  await load; // controllerchange / sw-updated מביאים לטעינה מחדש
-  await page.waitForFunction(async () => (await caches.keys()).includes('trip-planner-v27'));
+  let applied = false;
+  for (let attempt = 0; attempt < 120 && !applied; attempt++) {
+    applied = await page.evaluate(async () => {
+      const waiting = (await navigator.serviceWorker.getRegistration()).waiting;
+      if (!waiting) return false;
+      waiting.postMessage({ type: 'APPLY_UPDATE' });
+      return true;
+    });
+    if (!applied) await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  assert.ok(applied, 'The new worker must be available for explicit activation');
+  await page.waitForFunction(() => document.querySelectorAll('#nav button').length === 6, null, { timeout: 30000 });
   assert.ok((await page.content()).includes('15 * 60 * 1000'), 'Page did not refresh to new shell');
   const after = await page.evaluate(async () => {
     const trips = await import('./js/trips.js');
     return { trip: await trips.getTrip(localStorage.getItem('activeTripId')), caches: await caches.keys() };
   });
   assert.deepEqual(after.trip, old, 'Trip changed after forced refresh');
-  assert.deepEqual(after.caches.filter(k => k.startsWith('trip-planner-')), ['trip-planner-v27']);
-  console.log('SW upgrade QA: v25 to v27, automatic page reload, old cache removed and trip preserved');
+  assert.ok(after.caches.includes('trip-planner-shell-20261004-preview-1'));
+  assert.equal(await page.locator('#nav button').count(), 6, 'An old in-flight cache must not serve the previous UI');
+  console.log('SW upgrade QA: existing release to offline-map release, explicit activation and page reload, current shell served and trip preserved');
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

@@ -2,3 +2,5 @@
 Thumbs.db
 *.log
 scratch/
+map-packages/
+__pycache__/

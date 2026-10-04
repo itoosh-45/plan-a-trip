@@ -80,6 +80,8 @@ export async function updateTrip(trip) {
 }
 
 export async function removeTrip(tripId) {
+  const maps = await import('./maps/store.js');
+  await maps.deleteTripPlaces(tripId);
   await db.deleteTrip(tripId);
 }
 
