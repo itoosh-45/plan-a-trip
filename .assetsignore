@@ -1,0 +1,24 @@
+# Development and repository metadata — never publish as static assets.
+.git/
+.github/
+.claude/
+docs/
+scripts/
+tests/
+worker/
+undefined/
+
+# Local tooling / server files.
+*.py
+PROMPT.md
+test.html
+wrangler.jsonc
+wrangler.preview.jsonc
+.assetsignore
+
+# Local/scratch output and editor artifacts.
+scratch/
+node_modules/
+package-lock.json
+package.json
+.DS_Store
