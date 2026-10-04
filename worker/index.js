@@ -21,7 +21,26 @@ export default {
     if(env.MAP_PACKAGE_SERVICE&&/^\/map-packages\/world-[a-z0-9-]+\/(?:20261003|eox2024-z20261004)\/\d{4}\.bin$/.test(url.pathname)&&['GET','HEAD'].includes(request.method)){
       return fetch(new URL(url.pathname,env.MAP_PACKAGE_SERVICE),{method:request.method});
     }
-    if(!url.pathname.startsWith('/api/'))return env.ASSETS.fetch(request);
+    if(!url.pathname.startsWith('/api/')){
+      // Cloudflare Static Assets canonicalizes /index.html to /. Safari can later
+      // reject that followed redirect when the resulting Response is served by
+      // a service worker. Resolve the canonical asset inside the Worker so the
+      // browser and SW only ever see a direct 200 response.
+      const assetUrl = new URL(request.url);
+      if (assetUrl.pathname.endsWith('/index.html')) {
+        assetUrl.pathname = assetUrl.pathname.slice(0, -'index.html'.length);
+      }
+      let response = await env.ASSETS.fetch(new Request(assetUrl, request));
+      if (response.redirected) {
+        const finalUrl = new URL(response.url);
+        if (finalUrl.origin === url.origin) {
+          response = await env.ASSETS.fetch(new Request(finalUrl, request));
+        }
+      }
+      const headers = new Headers(response.headers);
+      if (url.pathname.endsWith('/sw.js')) headers.set('Cache-Control','no-store, no-cache, must-revalidate');
+      return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+    }
     if(['/api/map-packages','/api/map-package','/api/prepare-map-package'].includes(url.pathname)){
       // A persistent package builder is required; a Worker cannot run the CLI.
       // Configure its trusted HTTPS origin separately before production.
