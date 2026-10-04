@@ -7,7 +7,7 @@
     "enabled": true
   },
   "assets": {
-    "directory": "./scratch/preview-dist",
+    "directory": ".",
     "binding": "ASSETS",
     "run_worker_first": ["/*"]
   }
