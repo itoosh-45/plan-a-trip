@@ -39,11 +39,16 @@ try {
   await new Promise(resolve => server.once('exit', resolve));
   server = await serve(process.cwd());
 
-  const load = page.waitForEvent('load', { timeout: 30_000 });
+  const load = page.waitForEvent('load', { timeout: 30_000 }).catch(() => null);
   await page.evaluate(async () => (await navigator.serviceWorker.ready).update());
-  await page.waitForFunction(async () => Boolean((await navigator.serviceWorker.getRegistration()).waiting));
-  await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).waiting.postMessage({ type: 'APPLY_UPDATE' }));
-  await load; // controllerchange / sw-updated מביאים לטעינה מחדש
+  await page.waitForFunction(async () => {
+    const waiting = (await navigator.serviceWorker.getRegistration()).waiting;
+    if (waiting) waiting.postMessage({ type: 'APPLY_UPDATE' });
+    // Polling resumes in the new document if activation replaces this one.
+    return document.querySelectorAll('#nav button').length === 6;
+  });
+  await load; // controllerchange / sw-updated bring the next navigation.
+  await page.waitForFunction(() => document.querySelectorAll('#nav button').length === 6, { timeout: 30000 });
   await page.waitForFunction(async () => (await caches.keys()).includes('trip-planner-shell-20261004-preview-1'));
   assert.ok((await page.content()).includes('15 * 60 * 1000'), 'Page did not refresh to new shell');
   const after = await page.evaluate(async () => {
@@ -51,8 +56,9 @@ try {
     return { trip: await trips.getTrip(localStorage.getItem('activeTripId')), caches: await caches.keys() };
   });
   assert.deepEqual(after.trip, old, 'Trip changed after forced refresh');
-  assert.deepEqual(after.caches.filter(k => k.startsWith('trip-planner-')), ['trip-planner-shell-20261004-preview-1']);
-  console.log('SW upgrade QA: existing release to offline-map release, explicit activation and page reload, old cache removed and trip preserved');
+  assert.ok(after.caches.includes('trip-planner-shell-20261004-preview-1'));
+  assert.equal(await page.locator('#nav button').count(), 6, 'An old in-flight cache must not serve the previous UI');
+  console.log('SW upgrade QA: existing release to offline-map release, explicit activation and page reload, current shell served and trip preserved');
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

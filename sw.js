@@ -109,12 +109,14 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   event.respondWith((async () => {
-    const cached = await caches.match(request, { ignoreSearch: true });
+    // An in-flight request handled by the previous worker can recreate its
+    // cache after activation. Read only this release, never another cache.
+    const cache = await caches.open(CACHE);
+    const cached = await cache.match(request, { ignoreSearch: true });
     if (cached) return cached;
     try {
       const response = await fetch(request);
       if (response.ok) {
-        const cache = await caches.open(CACHE);
         cache.put(request, response.clone());
       }
       // Safari חוסם ב-standalone mode תשובה שעברה redirect ("has redirections").
@@ -130,7 +132,7 @@ self.addEventListener('fetch', event => {
     } catch {
       // ניווט בזמן אופליין לקובץ שלא נשמר — מגישים את מעטפת האפליקציה.
       if (request.mode === 'navigate') {
-        const shell = await caches.match('./index.html');
+        const shell = await cache.match('./index.html');
         if (shell) return shell;
       }
       throw new Error('הקובץ אינו זמין אופליין');
