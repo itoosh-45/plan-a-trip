@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "quiet-harbor-9f3k",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-04",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./scratch/preview-dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/*"]
+  }
+}
