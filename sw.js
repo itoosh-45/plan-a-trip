@@ -1,5 +1,5 @@
 // מטמון האפליקציה. שינוי המספר כאן מפיל את המטמון הישן בהתקנה הבאה.
-const CACHE = 'trip-planner-shell-20261004-preview-1';
+const CACHE = 'trip-planner-shell-20261004-preview-2';
 
 const SHELL = [
   './',
@@ -66,11 +66,57 @@ const SHELL = [
   './img/welcome/wizard-step1.webp',
 ];
 
+async function fetchForCache(url) {
+  const request = new Request(url, { cache: 'reload' });
+  let response = await fetch(request);
+
+  // Safari refuses to serve a cached Response whose redirected flag is true.
+  // Cloudflare Assets may canonicalize paths such as /index.html to /, so
+  // normalize those responses before they ever enter Cache Storage.
+  if (response.redirected) {
+    const finalUrl = new URL(response.url);
+    if (finalUrl.origin !== self.location.origin) {
+      throw new Error('Refusing cross-origin redirected shell asset: ' + finalUrl.href);
+    }
+    response = await fetch(new Request(finalUrl.href, { cache: 'reload', credentials: 'same-origin' }));
+  }
+
+  if (!response.ok || response.redirected) {
+    throw new Error('Shell asset is not cacheable without redirects: ' + request.url);
+  }
+
+  return new Response(await response.arrayBuffer(), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
+function withoutRedirectFlag(response) {
+  if (!response || !response.redirected) return response;
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    try { await cache.addAll(SHELL.map(url => new Request(url, { cache: 'reload' }))); }
-    catch (error) { await caches.delete(CACHE); throw error; }
+    try {
+      for (const url of SHELL) {
+        const request = new Request(url, { cache: 'reload' });
+        await cache.put(request, await fetchForCache(url));
+      }
+      // Emergency compatibility release: the broken Safari page cannot press
+      // the normal in-app update button. Activating this worker does not touch
+      // IndexedDB/localStorage or reload an active page by itself.
+      await self.skipWaiting();
+    } catch (error) {
+      await caches.delete(CACHE);
+      throw error;
+    }
   })());
 });
 
@@ -115,22 +161,15 @@ self.addEventListener('fetch', event => {
     const cached = request.mode === 'navigate'
       ? await cache.match('./index.html')
       : await cache.match(request, { ignoreSearch: true });
-    if (cached) return cached;
+    if (cached) return withoutRedirectFlag(cached);
     try {
       const response = await fetch(request);
-      if (response.ok) {
+      if (response.ok && !response.redirected) {
         cache.put(request, response.clone());
       }
-      // Safari חוסם ב-standalone mode תשובה שעברה redirect ("has redirections").
-      // בונים תשובה חדשה נטולת הדגל כדי שניווט מהאייקון במסך הבית לא ייכשל.
-      if (response.redirected) {
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers,
-        });
-      }
-      return response;
+      // Safari blocks service-worker responses that carry the redirected flag.
+      // Never cache such a response, and strip the flag before returning it.
+      return withoutRedirectFlag(response);
     } catch {
       // ניווט בזמן אופליין לקובץ שלא נשמר — מגישים את מעטפת האפליקציה.
       if (request.mode === 'navigate') {
