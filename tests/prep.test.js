@@ -12,6 +12,21 @@ export default async function () {
   const s = suite('רשימת הכנה');
   await db.useTestDatabase();
 
+  s.test('כמות נשמרת וסימון משלים את כל השורה', async () => {
+    const trip = await freshTrip();
+    const task = await prep.saveTask(trip.id, { title: 'חולצות', quantity: 5 });
+    await prep.toggleDone(trip.id, task.id);
+    const rows = await prep.listTasks(trip.id);
+    assertEqual([rows[0].quantity, rows[0].done], [5, true]);
+    assertEqual(await prep.progress(trip.id), { done: 1, total: 1 });
+  });
+  s.test('כמות קיימת חסרה היא אחת וכמויות לא תקינות נדחות', async () => {
+    assertEqual(prep.readQuantity(undefined), 1);
+    for (const value of [0, -1, 1.5, 'abc', Infinity]) {
+      await assertThrows(() => prep.readQuantity(value));
+    }
+  });
+
   s.test('ארבע רשימות קבועות ושלוש רמות דחיפות בלבד', () => {
     assertEqual(Object.keys(prep.STAGES), ['before', 'during', 'after', 'gear']);
     assertEqual(Object.keys(prep.URGENCY), ['critical', 'important', 'normal']);

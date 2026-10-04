@@ -20,6 +20,13 @@
 }
 
 :root {
+  --map-land: #F7F5EF;
+  --map-green: #C9DDC8;
+  --map-water: #B8D8E3;
+  --map-building: #E1DAD0;
+  --map-road: #FFFFFF;
+  --map-road-edge: #D2CDC4;
+  --map-boundary: #A998AF;
   color-scheme: light;
 
   --font-app: 'Noto Sans Hebrew', -apple-system, 'SF Hebrew', system-ui, 'Segoe UI', sans-serif;

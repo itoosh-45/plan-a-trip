@@ -5,6 +5,8 @@ import * as cur from '../currencies.js';
 import * as money from '../money.js';
 import * as excel from '../excel.js';
 import * as backup from '../backup.js';
+import { APP_VERSION, checkForUpdate, applyUpdate, getStorageStatus } from '../updates.js';
+import { formatBytes } from '../maps/packages.js';
 import * as sheets from '../sheets.js';
 import * as catalog from '../catalog.js';
 import * as imported from '../imported.js';
@@ -798,6 +800,27 @@ async function sheetsSection() {
 // ---------- המסך ----------
 
 export async function mount(host, tripId) {
+  const storage = await getStorageStatus();
+  const updateStatus = el('p', { class: 'sub', role: 'status', text: `גרסה ${APP_VERSION}` });
+  let available = false;
+  const updateButton = el('button', { class: 'btn btn-secondary btn-block', html: `${icon('refresh')}<span>עדכון</span>`, onClick: async () => {
+    updateButton.disabled = true;
+    try {
+      if (available) { await applyUpdate(); updateStatus.textContent = 'מתקין את העדכון…'; }
+      else {
+        updateStatus.textContent = 'בודק עדכונים…';
+        const state = await checkForUpdate();
+        available = state === 'available';
+        updateStatus.textContent = available ? 'קיים עדכון. הנתונים והמפות יישמרו.' : state === 'offline' ? 'נדרש חיבור לאינטרנט לבדיקת עדכון' : 'האפליקציה מעודכנת';
+        updateButton.innerHTML = `${icon('refresh')}<span>${available ? 'התקן ורענן' : 'עדכון'}</span>`;
+      }
+    } catch (error) { updateStatus.textContent = error.message; }
+    finally { updateButton.disabled = false; }
+  } });
+  host.append(section('האפליקציה והאחסון', '', [updateButton, updateStatus,
+    el('p', { class: 'sub', text: storage.persisted === true ? 'אחסון מתמשך אושר במכשיר' : storage.persisted === false ? 'אחסון מתמשך לא אושר — מומלץ לשמור גיבוי מקומי' : 'מצב אחסון מתמשך אינו זמין בדפדפן הזה' }),
+    storage.usage == null ? null : el('p', { class: 'sub', text: `${formatBytes(storage.usage)} בשימוש${storage.quota == null ? '' : ` מתוך ${formatBytes(storage.quota)}`}` }),
+  ]));
   const all = await trips.listTrips();
   const trip = all.find(t => t.id === tripId) || null;
 
@@ -877,7 +900,7 @@ export async function mount(host, tripId) {
 
   host.append(section(
     'גיבוי ושחזור',
-    'האפליקציה מבקשת מהדפדפן לא למחוק את הנתונים לבד, וכל כמה שבועות מזכירה לגבות לקובץ. גיבוי בלחיצת כפתור תמיד זמין כאן. גיבוי של טיול בודד אינו כולל מטבעות ושערים, שהם של המכשיר ולא של הטיול.',
+    'גיבוי מקומי לקובץ של הטיולים, ההוצאות ורשימות ההכנה. נקודות המפה, המסלול במפה וההורדות אינם כלולים בגיבוי. גיבוי של טיול בודד אינו כולל מטבעות ושערים של המכשיר.',
     [
       el('div', { style: 'display:flex; gap:8px' }, [
         el('button', { class: 'btn btn-secondary btn-block', html: `${icon('share')}<span>גבה הכול</span>`,
@@ -917,6 +940,12 @@ export async function mount(host, tripId) {
           confirmLabel: 'מחק הכול',
         });
         if (!ok) return;
+        const maps = await import('../maps/store.js');
+        if ((await maps.listPackages()).some(pack => pack.state === 'downloading')) {
+          toast('סיימו או בטלו את הורדות המפה לפני המחיקה', 'warning'); return;
+        }
+        await maps.clearPlaces();
+        for (const pack of await maps.listPackages()) await maps.deletePackage(pack.id);
         await db.wipe();
         try { localStorage.removeItem('activeTripId'); } catch { /* מצב פרטי */ }
         toast('כל הנתונים נמחקו', 'success');

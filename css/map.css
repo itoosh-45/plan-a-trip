@@ -1,0 +1,47 @@
+.map-page { padding-block:12px; }
+.map-toolbar,.map-actions,.map-selectors { display:flex; align-items:center; gap:8px; }
+.map-toolbar { justify-content:space-between; }
+.map-toolbar .screen-title { margin:0; }
+.map-selectors { margin-block:12px; flex-wrap:wrap; }
+.map-selectors .field { min-width:0; width:calc(50% - 4px); font-size:14px; }
+.map-selectors .map-basemap-choice { width:100%; }
+.map-viewport { position:relative; border-radius:16px; overflow:hidden; background:var(--map-water); border:1px solid var(--color-border); }
+.map-canvas { width:100%; height: min(52dvh,480px); min-height:300px; direction:ltr; }
+.map-coverage { position:absolute; inset-block-end:30px; inset-inline:12px; background:var(--color-surface); color:var(--color-text-dim); border:1px solid var(--color-border); border-radius:12px; padding:8px 12px; pointer-events:none; font-size:12px; text-align:center; }
+.map-coverage[hidden] { display:none; }
+.map-actions { margin-block:12px; }
+.map-actions .btn { flex:1; padding-inline:8px; gap:5px; }
+.map-actions .icon-btn { flex:none; }
+.map-route-note { margin:0 0 12px; }
+.map-pin { width:34px; height:34px; border-radius:50% 50% 50% 4px; border:2px solid var(--color-surface); background:var(--color-accent); color:var(--color-surface); box-shadow:var(--shadow-stamp); font:600 14px var(--font-app); cursor:pointer; }
+.map-pin-flight { background:var(--color-highlight); }
+.map-place-row { width:100%; display:flex; align-items:center; gap:12px; background:var(--color-surface); color:var(--color-text); border:0; border-block-end:1px solid var(--color-hairline); font:inherit; padding:12px; text-align:start; min-height:56px; cursor:pointer; }
+.map-place-row:first-child { border-start-start-radius:16px; border-start-end-radius:16px; }
+.map-place-row:last-child { border-end-start-radius:16px; border-end-end-radius:16px; }
+.map-place-number { border:1px solid var(--color-border); border-radius:50%; width:28px; height:28px; display:grid; place-items:center; flex:none; }
+.map-place-copy { flex:1; display:flex; flex-direction:column; min-width:0; overflow-wrap:anywhere; }
+.map-place-copy strong { font-size:14px; font-weight:500; }
+.map-place-date { font-size:70%; color:var(--color-text-dim); align-self:stretch; text-align:right; direction:ltr; }
+.map-country { border-block-end:1px solid var(--color-border); }
+.map-country-heading { display:flex; align-items:center; gap:8px; padding:16px 0; min-height:44px; cursor:pointer; list-style:none; font-weight:500; }
+.map-country-heading::-webkit-details-marker { display:none; }
+.map-country[open] .map-country-heading svg { transform:rotate(180deg); }
+.map-country-packages { padding-inline:8px; }
+.map-country[hidden] { display:none; }
+.map-page.is-fullscreen { position:fixed; inset:0; height:100dvh; box-sizing:border-box; padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom)); z-index:100; background:var(--color-bg); display:flex; flex-direction:column; }
+.is-fullscreen .map-viewport { flex:1; min-height:0; }
+.is-fullscreen .map-canvas { height:100%; min-height:0; }
+.is-fullscreen .map-place-list { display:none; }
+.map-fullscreen-open { overflow:hidden; }
+.map-fullscreen-open .sheet-backdrop { z-index:150; }
+.map-fullscreen-open #toasts { z-index:200; }
+.map-search-results { margin-block:12px; }
+.map-search-result { display:flex; flex-direction:column; width:100%; padding:12px; gap:4px; text-align:start; font:inherit; color:var(--color-text); background:var(--color-surface); border:0; border-block-end:1px solid var(--color-border); cursor:pointer; }
+.map-download-row { padding-block:16px; border-block-end:1px solid var(--color-border); display:flex; flex-direction:column; gap:8px; }
+.map-download-heading { display:flex; justify-content:space-between; gap:12px; }
+.map-download-actions { display:flex; gap:8px; }
+.map-download-actions .btn:first-child { flex:1; }
+.map-download-row progress { width:100%; height:6px; accent-color:var(--color-accent); }
+.map-coordinates summary { cursor:pointer; color:var(--color-text-dim); padding-block:12px; }
+.maplibregl-ctrl-attrib { font-size:10px!important; }
+.maplibregl-canvas:focus-visible { outline:2px solid var(--color-accent); }

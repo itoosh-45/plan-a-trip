@@ -29,6 +29,7 @@ async function openTaskSheet(tripId, existing, stage, category) {
   ]);
 
   const title = el('input', { class: 'field', type: 'text', value: existing?.title || '' });
+  const quantity = el('input', { class: 'field', type: 'number', inputmode: 'numeric', min: '1', step: '1', value: existing?.quantity ?? 1 });
   const urgency = el('select', { class: 'field' }, Object.entries(prep.URGENCY).map(([k, v]) =>
     el('option', { value: k, selected: (existing?.urgency || 'normal') === k, text: v })));
   const stageSel = el('select', { class: 'field' }, Object.entries(lists).map(([k, v]) =>
@@ -66,7 +67,7 @@ async function openTaskSheet(tripId, existing, stage, category) {
   const s = sheet({
     title: existing ? 'עריכת משימה' : 'משימה חדשה',
     body: el('div', {}, [
-      row('כותרת', title), row('דחיפות', urgency), row('שלב', stageSel),
+      row('כותרת', title), row('כמות', quantity), row('דחיפות', urgency), row('שלב', stageSel),
       row('קטגוריה', categorySel), row('יעד', segment), row('עלות משוערת', amount),
     ]),
     actions: [
@@ -76,6 +77,7 @@ async function openTaskSheet(tripId, existing, stage, category) {
           await prep.saveTask(tripId, {
             ...existing,
             title: title.value,
+            quantity: quantity.value,
             urgency: urgency.value,
             stage: stageSel.value,
             category: categorySel.value,
@@ -184,7 +186,10 @@ function taskRow(tripId, task, segs, currency, rate) {
       class: 'title', 'aria-label': `ערוך את ${task.title}`,
       onClick: () => openTaskSheet(tripId, task),
     }, [
-      el('div', { text: task.title }),
+      el('div', { class: 'task-title-line' }, [
+        el('span', { text: task.title }),
+        el('span', { class: 'quantity-badge num', text: `×${task.quantity ?? 1}`, 'aria-label': `כמות ${task.quantity ?? 1}` }),
+      ]),
       el('div', { class: 'sub' }, [
         el('span', { class: 'urgency-tag', text: prep.URGENCY[task.urgency || 'normal'] }),
         seg ? el('span', { text: ` · ${seg.city}` }) : null,
@@ -414,7 +419,7 @@ function stageHeader(stage, label, tasks, isOpen, tripId) {
         style: `color:var(--color-accent); transform:rotate(${isOpen ? 0 : 90}deg)`,
       }),
       el('span', { class: 'grow card-title', text: label }),
-      el('span', { class: 'sub num', text: `${done}/${tasks.length}` }),
+      el('span', { class: 'sub num', text: `${tasks.length} פריטים` }),
     ]),
     el('button', {
       class: 'icon-btn', 'aria-label': `הוסף משימה ידנית ל${label}`,
@@ -484,6 +489,13 @@ export async function mount(host, tripId) {
   ]);
   const currency = trip?.currency || 'ILS';
   const rate = (await rates.rateMap([currency]))[currency.toUpperCase()];
+  const completed = all.filter(task => task.done).length;
+  host.append(el('div', { class: 'prep-page-summary' }, [
+    el('h2', { class: 'screen-title', text: `רשימת ההכנה · ${all.length} פריטים` }),
+    el('div', { class: 'packing-progress sub' }, [
+      el('span', { text: `בוצעו ${completed}` }), el('span', { text: `נותרו ${all.length-completed}` }),
+    ]),
+  ]));
 
   host.append(el('div', { class: 'card-gap filter-row', style: 'display:flex; gap:8px; overflow-x:auto; padding-block:4px' }, [
     el('button', {
@@ -505,6 +517,10 @@ export async function mount(host, tripId) {
 
     const body = [
       stageHeader(stage, label, stageTasks, isOpen, tripId),
+      el('div', { class: 'packing-progress sub' }, [
+        el('span', { text: `${stage === 'gear' ? 'נארזו' : 'בוצעו'} ${stageTasks.filter(t => t.done).length}` }),
+        el('span', { text: `נותרו ${stageTasks.filter(t => !t.done).length}${stage === 'gear' ? ' לארוז' : ''}` }),
+      ]),
       el('div', { class: 'bar', style: 'margin-block-start:8px' }, [
         el('span', { style: `width:${pct}%` }),
       ]),

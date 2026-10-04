@@ -7,11 +7,12 @@ import * as backup from './backup.js';
 import * as sheets from './sheets.js';
 import { maybeOpenWelcome } from './welcome.js';
 
-// חמישה טאבים. התוויות קצרות בכוונה — ברוחב טלפון תווית בת שתי מילים
+// שישה טאבים. התוויות קצרות בכוונה — ברוחב טלפון תווית בת שתי מילים
 // נשברת לשתי שורות ומעוותת את גובה הסרגל.
 const SCREENS = [
   { key: 'prep',     label: 'הכנה',   iconName: 'check' },
   { key: 'plan',     label: 'תכנון',  iconName: 'plan' },
+  { key: 'map',      label: 'מפה',    iconName: 'map' },
   { key: 'expenses', label: 'הוצאות', iconName: 'expenses' },
   { key: 'summary',  label: 'סיכום',  iconName: 'summary' },
   { key: 'settings', label: 'הגדרות', iconName: 'settings' },
@@ -77,6 +78,7 @@ async function buildTopbar() {
 // יצירת טיול משדרת כמה אירועי data:changed ברצף, ולכל אחד מאזין שקורא ל-refresh.
 // בלי "רק הרינדור האחרון קובע", שני רינדורים חופפים היו מכפילים את התוכן על המסך.
 let renderId = 0;
+let currentCleanup = null;
 
 /**
  * החזקת הרינדור. הזנה מהירה של משימה שומרת רשומה אחרי רשומה, וכל שמירה
@@ -106,11 +108,12 @@ export async function refresh() {
 
   const frag = document.createDocumentFragment();
   const mount = mounts.get(current);
+  let nextCleanup = null;
   if (!mount) {
     frag.append(el('div', { class: 'card card-gap dim', text: 'המסך הזה עוד לא נבנה.' }));
   } else {
     try {
-      await mount(frag, activeTrip);
+      nextCleanup = await mount(frag, activeTrip);
     } catch (err) {
       frag.append(el('div', { class: 'card card-gap' }, [
         el('div', { class: 'toast error', text: `שגיאה בטעינת המסך: ${err.message}` }),
@@ -118,7 +121,9 @@ export async function refresh() {
     }
   }
 
-  if (myId !== renderId) return; // התבטל על ידי רינדור מאוחר יותר
+  if (myId !== renderId) { if(typeof nextCleanup === 'function') nextCleanup(); return; }
+  if(typeof currentCleanup === 'function')currentCleanup();
+  currentCleanup = nextCleanup;
   document.getElementById('topbar').replaceChildren(topbarNode);
   // מיקום הגלילה נשמר: קיפול יום באמצע רשימה ארוכה לא אמור להחזיר לראש המסך.
   const screen = document.getElementById('screen');

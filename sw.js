@@ -1,5 +1,5 @@
 // מטמון האפליקציה. שינוי המספר כאן מפיל את המטמון הישן בהתקנה הבאה.
-const CACHE = 'trip-planner-v27';
+const CACHE = 'trip-planner-shell-20261004-preview-1';
 
 const SHELL = [
   './',
@@ -44,14 +44,24 @@ const SHELL = [
   './js/screens/expenses.js',
   './js/screens/summary.js',
   './js/screens/settings.js',
+  './js/updates.js',
+  './js/maps/store.js',
+  './js/maps/packages.js',
+  './js/maps/search.js',
+  './js/maps/render.js',
+  './js/screens/map.js',
+  './css/map.css',
+  './vendor/maplibre-gl.js',
+  './vendor/maplibre-gl.css',
+  './vendor/pmtiles.js',
+  './data/map-packages.json',
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    // addAll נכשל כולו על קובץ אחד חסר. כאן עדיף מטמון חלקי מאשר התקנה שנופלת.
-    await Promise.all(SHELL.map(url => cache.add(url).catch(() => {})));
-    await self.skipWaiting();
+    try { await cache.addAll(SHELL.map(url => new Request(url, { cache: 'reload' }))); }
+    catch (error) { await caches.delete(CACHE); throw error; }
   })());
 });
 
@@ -65,7 +75,7 @@ self.addEventListener('install', event => {
  */
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    const stale = (await caches.keys()).filter(key => key !== CACHE);
+    const stale = (await caches.keys()).filter(key => key !== CACHE && /^trip-planner-(?:shell-|v\d+$)/.test(key));
     for (const key of stale) await caches.delete(key);
     await self.clients.claim();
     if (!stale.length) return;
@@ -84,6 +94,8 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+  // Download chunks are stored in the map database; never duplicate them in the shell cache.
+  if (url.pathname.includes('/map-packages/') || url.pathname.includes('/api/')) return;
   // שערי מטבע נמשכים מהרשת בלבד. לעולם לא מגישים שער מהמטמון כאילו הוא טרי.
   if (url.origin !== self.location.origin) return;
 
@@ -115,4 +127,8 @@ self.addEventListener('fetch', event => {
       throw new Error('הקובץ אינו זמין אופליין');
     }
   })());
+});
+
+self.addEventListener('message', event => {
+  if (event.data?.type === 'APPLY_UPDATE') self.skipWaiting();
 });
