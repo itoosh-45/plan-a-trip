@@ -39,7 +39,7 @@ const assert=require('node:assert/strict');
   assert.equal(parseFloat(dates.size)/parseFloat(dates.parent),0.7);assert.equal(dates.align,'right');
   for(const type of ['satellite','hybrid','terrain']){
     const tile=page.waitForResponse(r=>r.url().startsWith('https://tiles.maps.eox.at/')&&r.status()===200,{timeout:30000});
-    await page.getByRole('combobox',{name:'סוג מפה',exact:true}).selectOption(type);
+    await page.getByRole('button',{name:'בחר סוג מפה',exact:true}).click();await page.getByRole('combobox',{name:'סוג מפה',exact:true}).selectOption(type);
     await tile;await page.waitForTimeout(1000);
     assert.equal(await page.locator('.map-pin').count(),2);
     assert.match(await page.locator('.map-coverage').textContent(),/אונליין/);

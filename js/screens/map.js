@@ -195,6 +195,17 @@ export async function mount(host, tripId) {
     el('option',{value:'terrain',text:'תבליט וטופוגרפיה · אונליין'}),
   ]);
   basemapChoice.value=chosenBasemap;
+  const layerPanel=el('div',{class:'map-layer-panel',id:'map-layer-panel',role:'dialog','aria-label':'בחירת תצוגת מפה',hidden:true},[
+    el('label',{class:'field-label',for:'map-basemap',text:'תצוגת מפה'}),basemapChoice,
+  ]);
+  basemapChoice.id='map-basemap';
+  const layers=el('button',{class:'map-layers-button','aria-label':'בחר סוג מפה','aria-expanded':'false','aria-controls':'map-layer-panel','aria-haspopup':'dialog',html:icon('layers'),onClick:()=>{
+    layerPanel.hidden=!layerPanel.hidden;layers.setAttribute('aria-expanded',String(!layerPanel.hidden));
+    if(!layerPanel.hidden)basemapChoice.focus();
+  }});
+  const closeLayers=()=>{layerPanel.hidden=true;layers.setAttribute('aria-expanded','false');};
+  const outsideLayers=e=>{if(!layerPanel.contains(e.target)&&!layers.contains(e.target))closeLayers();};
+  document.addEventListener('click',outsideLayers);
   const list=el('div',{class:'map-place-list'});
   let renderer, frame, disposed=false, fullscreen=false, mapRevision=0;
   const filtered=()=>chosenDate?places.filter(p=>p.date===chosenDate):places;
@@ -254,19 +265,19 @@ export async function mount(host, tripId) {
   window.addEventListener('online',networkChanged);window.addEventListener('offline',networkChanged);
   date.addEventListener('change',()=>{chosenDate=date.value;renderList();renderer?.updatePlaces(filtered());renderer?.fitPlaces();});
   packageChoice.addEventListener('change',()=>{chosenPackage=packageChoice.value;restartMap().catch(e=>toast(e.message,'error'));});
-  basemapChoice.addEventListener('change',()=>{chosenBasemap=basemapChoice.value;restartMap(true).catch(e=>toast(e.message,'error'));});
+  basemapChoice.addEventListener('change',()=>{chosenBasemap=basemapChoice.value;closeLayers();layers.focus();restartMap(true).catch(e=>toast(e.message,'error'));});
   const full=el('button',{class:'icon-btn','aria-label':'פתח מפה במסך מלא',html:icon('expand'),onClick:()=>{
     fullscreen=!fullscreen;wrapper.classList.toggle('is-fullscreen',fullscreen);document.body.classList.toggle('map-fullscreen-open',fullscreen);
     full.innerHTML=icon(fullscreen?'close':'expand');full.setAttribute('aria-label',fullscreen?'צא ממסך מלא':'פתח מפה במסך מלא');renderer?.resize();
   }});
-  const key=e=>{if(e.key==='Escape'&&fullscreen)full.click();};document.addEventListener('keydown',key);
+  const key=e=>{if(e.key==='Escape'&&!layerPanel.hidden){closeLayers();layers.focus();}else if(e.key==='Escape'&&fullscreen)full.click();};document.addEventListener('keydown',key);
   const downloads=el('button',{class:'btn btn-tertiary',html:`${icon('download')}<span>הורדת מפות</span>`,onClick:()=>openPackages(restartMap).catch(e=>toast(e.message,'error'))});
-  wrapper.append(el('div',{class:'map-toolbar'},[el('h2',{class:'screen-title',text:'המפה שלי'}),full]),el('div',{class:'map-selectors'},[date,packageChoice,basemapChoice]),
-    el('div',{class:'map-viewport'},[mapHost,coverage]),
+  wrapper.append(el('div',{class:'map-toolbar'},[el('h2',{class:'screen-title',text:'המפה שלי'}),full]),el('div',{class:'map-selectors'},[date,packageChoice]),
+    el('div',{class:'map-viewport'},[mapHost,coverage,layers,layerPanel]),
     el('div',{class:'map-actions'},[el('button',{class:'btn btn-primary',html:`${icon('plus')}<span>הוסף מקום</span>`,onClick:()=>openSearch(tripId,reloadPlaces,()=>renderer?.pickCenter())}),downloads,
       el('button',{class:'icon-btn','aria-label':'הצג את כל המקומות',html:icon('fit'),onClick:()=>renderer?.fitPlaces()})]),
     el('p',{class:'sub map-route-note',text:'הקו מציג את סדר הביקור שתכננת, ללא ניווט או מעקב מיקום.'}),list);
   renderDates();renderList();host.append(wrapper);
   frame=requestAnimationFrame(()=>restartMap().catch(e=>{coverage.textContent=e.message;}));
-  return ()=>{disposed=true;cancelAnimationFrame(frame);renderer?.destroy();document.removeEventListener('keydown',key);window.removeEventListener('online',networkChanged);window.removeEventListener('offline',networkChanged);document.body.classList.remove('map-fullscreen-open');};
+  return ()=>{disposed=true;cancelAnimationFrame(frame);renderer?.destroy();document.removeEventListener('keydown',key);document.removeEventListener('click',outsideLayers);window.removeEventListener('online',networkChanged);window.removeEventListener('offline',networkChanged);document.body.classList.remove('map-fullscreen-open');};
 }

@@ -6,6 +6,12 @@
 .map-selectors .field { min-width:0; width:calc(50% - 4px); font-size:14px; }
 .map-selectors .map-basemap-choice { width:100%; }
 .map-viewport { position:relative; border-radius:16px; overflow:hidden; background:var(--map-water); border:1px solid var(--color-border); }
+.map-layers-button { position:absolute; top:10px; left:10px; z-index:3; display:grid; place-items:center; width:44px; height:44px; padding:10px; border:1px solid var(--color-border); border-radius:12px; background:var(--color-surface); color:var(--color-text); box-shadow:var(--shadow-stamp); cursor:pointer; }
+.map-layers-button[aria-expanded="true"] { color:var(--color-accent); }
+.map-layer-panel { position:absolute; top:10px; left:64px; z-index:3; width:min(270px,calc(100% - 74px)); box-sizing:border-box; padding:12px; border:1px solid var(--color-border); border-radius:12px; background:var(--color-surface); box-shadow:var(--shadow-stamp); }
+.map-layer-panel[hidden] { display:none; }
+.map-layer-panel .field { width:100%; font-size:14px; margin-block-start:8px; }
+.map-viewport .maplibregl-ctrl-top-left { top:54px; }
 .map-canvas { width:100%; height: min(52dvh,480px); min-height:300px; direction:ltr; }
 .map-coverage { position:absolute; inset-block-end:30px; inset-inline:12px; background:var(--color-surface); color:var(--color-text-dim); border:1px solid var(--color-border); border-radius:12px; padding:8px 12px; pointer-events:none; font-size:12px; text-align:center; }
 .map-coverage[hidden] { display:none; }
