@@ -2,7 +2,7 @@ const {chromium}=require('C:/Users/USER/.cache/codex-runtimes/codex-primary-runt
 (async()=>{
   const browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage();
   await page.request.post('http://127.0.0.1:8126/__test/version/1');
-  await page.goto('http://127.0.0.1:8126');await page.waitForLoadState('networkidle');
+  await page.goto('http://127.0.0.1:8126');await page.getByRole('button',{name:'אחר כך',exact:true}).click();await page.waitForLoadState('networkidle');
   await page.evaluate(async()=>{await navigator.serviceWorker.ready;});
   await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
   const tripId=await page.evaluate(async()=>{

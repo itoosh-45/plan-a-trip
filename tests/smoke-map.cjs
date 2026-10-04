@@ -8,7 +8,7 @@ const assert=require('node:assert/strict');
   page.on('pageerror',e=>errors.push(e.message));
   page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('Failed to load resource'))errors.push(m.text());});
   page.on('requestfailed',request=>{if(request.url().startsWith('http://127.0.0.1:8125/')&&!request.url().includes('/api/'))errors.push(request.url()+': '+request.failure()?.errorText);});
-  await page.goto('http://127.0.0.1:8125');await page.waitForLoadState('networkidle');
+  await page.goto('http://127.0.0.1:8125');await page.getByRole('button',{name:'אחר כך',exact:true}).click();await page.waitForLoadState('networkidle');
   await page.evaluate(async()=>{
     const trips=await import('./js/trips.js');const app=await import('./js/app.js');
     const maps=await import('./js/maps/store.js');const packages=await import('./js/maps/packages.js');

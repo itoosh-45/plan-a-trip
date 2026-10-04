@@ -64,7 +64,7 @@ try {
   assert.equal(await page.locator('.sheet').count(), 0);
   await page.reload();
   assert.equal(await page.locator('.welcome').count(), 0);
-  assert.equal(await page.locator('#nav button').count(), 5);
+  assert.equal(await page.locator('#nav button').count(), 6);
 
   const seeded = await page.evaluate(async () => {
     const trips = await import('./js/trips.js');
@@ -142,7 +142,7 @@ try {
     await offlinePage.reload();
     await offlineContext.setOffline(true);
     await offlinePage.reload();
-    assert.equal(await offlinePage.locator('#nav button').count(), 5);
+    assert.equal(await offlinePage.locator('#nav button').count(), 6);
     await offlineContext.setOffline(false);
     await offlineContext.close();
   }

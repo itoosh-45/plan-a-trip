@@ -6,7 +6,7 @@ const assert=require('node:assert/strict');
     const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage(),errors=[];
     page.on('pageerror',e=>errors.push(e.message));
     page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('Failed to load resource'))errors.push(m.text());});
-    await page.goto('http://127.0.0.1:8125');
+    await page.goto('http://127.0.0.1:8125');await page.getByRole('button',{name:'אחר כך',exact:true}).click();
     await page.evaluate(async()=>{
       const trips=await import('./js/trips.js'),maps=await import('./js/maps/store.js'),app=await import('./js/app.js');
       const trip=await trips.createTrip({name:'בדיקת מדינה מהקטלוג העולמי',startDate:'2026-11-01',endDate:'2026-11-10'});

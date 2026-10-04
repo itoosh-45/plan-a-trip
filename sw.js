@@ -56,6 +56,14 @@ const SHELL = [
   './vendor/pmtiles.js',
   './data/map-packages.json',
   './data/world-map-packages.json',
+  './img/welcome/catalog-pick.webp',
+  './img/welcome/date-range.webp',
+  './img/welcome/expense-add.webp',
+  './img/welcome/plan-days.webp',
+  './img/welcome/plan-segments.webp',
+  './img/welcome/prep-list.webp',
+  './img/welcome/summary-budget.webp',
+  './img/welcome/wizard-step1.webp',
 ];
 
 self.addEventListener('install', event => {

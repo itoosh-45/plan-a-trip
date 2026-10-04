@@ -9,7 +9,7 @@ ASSETS = (ROOT / sys.argv[2]).resolve() if len(sys.argv)>2 else ROOT
 if not ASSETS.is_relative_to(ROOT): raise RuntimeError('Preview assets must be inside the workspace')
 HOSTS = {'maps.app.goo.gl','goo.gl','www.google.com','google.com','maps.google.com'}
 FILES = {'index.html','sw.js','manifest.json','robots.txt'}
-DIRS = {'js','css','fonts','icons','vendor','data','map-packages'}
+DIRS = {'js','css','fonts','icons','img','vendor','data','map-packages'}
 PACKAGES=PackageService(ASSETS)
 
 def map_url(raw):
@@ -33,6 +33,8 @@ class Preview(SimpleHTTPRequestHandler):
         self.send_header('X-Content-Type-Options','nosniff')
         super().end_headers()
     def log_message(self, fmt, *args):
+        # Avoid blocking a background preview on a pipe full of asset logs.
+        if len(args) > 1 and str(args[1]).isdigit() and int(args[1]) < 400: return
         if args and str(args[0]).startswith(('GET /api/','POST /api/')): return
         super().log_message(fmt,*args)
     def answer(self, data, status=200):

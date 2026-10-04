@@ -35,6 +35,7 @@
   import { mount as summaryMount } from './js/screens/summary.js';
   import { mount as settingsMount } from './js/screens/settings.js';
   import { mount as mapMount } from './js/screens/map.js';
+  import { activeDownloads } from './js/maps/packages.js';
 
   registerScreen('prep', prepMount);
   registerScreen('plan', planMount);
@@ -49,7 +50,7 @@
     let reloading = false;
     const reloadWhenIdle = () => {
       if (reloading) return;
-      const busy = document.querySelector('.sheet-backdrop')
+      const busy = activeDownloads.size || document.querySelector('.sheet-backdrop')
         || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
       if (busy) { setTimeout(reloadWhenIdle, 3000); return; }
       reloading = true;
