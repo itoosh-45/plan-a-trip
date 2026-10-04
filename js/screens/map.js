@@ -106,22 +106,32 @@ async function openPackages(onChanged) {
         el('span', { class: 'sub', text: `${countryPacks.length} חבילות` }),
         el('span', { html: icon('chevronDown') }),
       ]), content);
-      groups.push({ country, details });
+      const group={country,details,entries:[]};groups.push(group);
       rows.append(details);
-      for(const pack of countryPacks.sort((a,b)=>(a.kind==='country'?0:1)-(b.kind==='country'?0:1)||alphabetical(a.name,b.name))){
+      for(let pack of countryPacks.sort((a,b)=>(a.kind==='country'?0:1)-(b.kind==='country'?0:1)||alphabetical(a.name,b.name))){
       const local=saved.find(p=>p.id===pack.id);
-      const status=el('span',{class:'sub',role:'status',text:packs.activeDownloads.has(pack.id)?'ההורדה ממשיכה ברקע':local?.state==='ready'?'מוכן לאופליין':local?.state==='partial'?'הורדה חלקית — ניתן להמשיך':'טרם הורד'});
+      const status=el('span',{class:'sub',role:'status',text:packs.activeDownloads.has(pack.id)?'ההורדה ממשיכה ברקע':local?.state==='ready'?'מוכן לאופליין':local?.state==='partial'?'הורדה חלקית — ניתן להמשיך':pack.chunks?'טרם הורד':'נדרשת הכנה לפני הצגת הגודל המדויק'});
+      const size=el('span',{class:'num sub',text:pack.chunks?packs.formatBytes(pack.bytes):'גודל יוצג אחרי הכנה'});
       const progress=el('progress',{max:1,value:local?.state==='ready'?1:(local?.received||0)/pack.bytes,'aria-label':`הורדת ${pack.name}`});
       let abort;
-      const download=el('button',{class:'btn btn-secondary',text:packs.activeDownloads.has(pack.id)?'בטל':local?.state==='ready'?'הורד שוב':'הורד',onClick:async()=>{
+      const download=el('button',{class:'btn btn-secondary',text:packs.activeDownloads.has(pack.id)?'בטל':local?.state==='ready'?'הורד שוב':pack.chunks?'הורד':'הכן חבילה',onClick:async()=>{
         if(abort){abort.abort();return;}
         if(packs.activeDownloads.has(pack.id)){packs.cancelDownload(pack.id);status.textContent='ההורדה נעצרת';download.textContent='המשך הורדה';return;}
         if(!navigator.onLine){toast('התחברו לאינטרנט כדי להוריד מפה','warning');return;}
+        if(!pack.chunks){
+          abort=new AbortController();download.textContent='עצור המתנה';remove.disabled=true;
+          try{
+            pack=await packs.preparePackage(pack,{signal:abort.signal,onStatus:message=>{if(!status.isConnected)abort.abort();status.textContent=message;}});
+            size.textContent=packs.formatBytes(pack.bytes);status.textContent='החבילה מוכנה. בדקו את הגודל ולחצו הורד כדי לשמור בטלפון';
+          }catch(error){status.textContent=error.name==='AbortError'?'ההמתנה נעצרה; הכנת החבילה הציבורית יכולה להמשיך בשרת':error.message;}
+          finally{abort=null;download.textContent=pack.chunks?'הורד':'הכן חבילה';remove.disabled=false;}
+          return;
+        }
         abort=new AbortController();download.textContent='בטל';remove.disabled=true;
         try{
           const ready=await packs.downloadPackage(pack,{signal:abort.signal,onProgress:p=>{progress.value=p;status.textContent=`מוריד ${Math.round(p*100)}%`;}});
           const index=saved.findIndex(p=>p.id===pack.id);if(index>=0)saved[index]=ready;else saved.push(ready);
-          status.textContent='מוכן לאופליין';await onChanged();
+          status.textContent='מוכן לאופליין';chosenPackage=pack.baseId||pack.id;chosenBasemap=pack.type==='satellite'?'satellite':'streets';await onChanged();
         }catch(error){status.textContent=error.name==='AbortError'?'ההורדה נעצרה — ניתן להמשיך':error.message;}
         finally{abort=null;download.textContent='הורד';remove.disabled=false;}
       }});
@@ -130,31 +140,44 @@ async function openPackages(onChanged) {
         try{await store.deletePackage(pack.id);const index=saved.findIndex(p=>p.id===pack.id);if(index>=0)saved.splice(index,1);progress.value=0;status.textContent='ההורדה נמחקה. המקומות האישיים נשמרו';await onChanged();}
         catch(error){toast(error.message,'error');}
       }});
-      content.append(el('article',{class:'map-download-row'},[
-        el('div',{class:'map-download-heading'},[el('strong',{text:pack.name}),el('span',{class:'num sub',text:packs.formatBytes(pack.bytes)})]),
+      const row=el('article',{class:'map-download-row'},[
+        el('div',{class:'map-download-heading'},[el('strong',{text:pack.name}),size]),
+        el('span',{class:'sub',text:pack.type==='satellite'?`לוויין ${pack.imageryYear} · ${pack.quality}`:pack.quality||'מפת רחובות מפורטת'}),
         status,progress,el('div',{class:'map-download-actions'},[download,remove]),
-      ]));
+      ]);
+      group.entries.push({pack,row});content.append(row);
       }
     }
     if(!catalog.length)rows.textContent='חבילות המפה עדיין בהכנה';
   };
   const search = input();
   search.type = 'search';
-  search.placeholder = 'חיפוש מדינה';
-  search.setAttribute('aria-label', 'חיפוש מדינה');
-  const empty = el('p', { class: 'sub', role: 'status', hidden: true, text: 'לא נמצאה מדינה בשם הזה' });
-  search.addEventListener('input', () => {
-    const query = search.value.trim().normalize('NFKC').toLocaleLowerCase('he');
+  search.placeholder = 'חיפוש מדינה, אזור או עיר';
+  search.setAttribute('aria-label', 'חיפוש מפות');
+  const type=el('select',{class:'field','aria-label':'סוג מפה להורדה'},[
+    el('option',{value:'',text:'כל סוגי המפות'}),el('option',{value:'streets',text:'רחובות'}),el('option',{value:'satellite',text:'לוויין'}),
+  ]);
+  const empty = el('p', { class: 'sub', role: 'status', hidden: true, text: 'לא נמצאו מפות מתאימות' });
+  const filter=() => {
+    const normalize=value=>value.normalize('NFKC').toLocaleLowerCase('he');
+    const query=normalize(search.value.trim());const terms=query.split(/\s+/).filter(Boolean);
     let matches = 0;
     for (const group of groups) {
-      const match = group.country.normalize('NFKC').toLocaleLowerCase('he').includes(query);
+      for(const entry of group.entries){
+        const kind=entry.pack.type||'streets';
+        const text=normalize([group.country,entry.pack.name,entry.pack.englishName,entry.pack.countryCode,kind==='satellite'?'לוויין satellite':'רחובות streets'].filter(Boolean).join(' '));
+        entry.row.hidden=!!type.value&&kind!==type.value||!terms.every(term=>text.includes(term));
+      }
+      const match=group.entries.some(entry=>!entry.row.hidden);
       group.details.hidden = !match;
+      if(match&&query&&!normalize(group.country).includes(query))group.details.open=true;
       if (match) matches++;
     }
     empty.hidden = matches > 0;
-  });
+  };
+  search.addEventListener('input',filter);type.addEventListener('change',filter);
   render();
-  sheet({title:'מפות להורדה',body:el('div',{},[el('p',{class:'sub',text:'בחרו מדינה ופתחו את רשימת הערים והאזורים שלה. השאירו את האפליקציה פתוחה עד לסיום ההורדה. אפשר למחוק מפות אחרי הטיול; הנקודות האישיות נשארות.'}),search,empty,rows])});
+  sheet({title:'מפות להורדה',body:el('div',{},[el('p',{class:'sub',text:'חפשו מדינה, אזור או עיר ובחרו רחובות או לוויין. חבילות חדשות דורשות הכנה בשרת; הגודל האמיתי יוצג לפני ההורדה לטלפון. השאירו את האפליקציה פתוחה עד לסיום ההורדה. תבליט זמין לצפייה אונליין.'}),search,type,empty,rows])});
 }
 
 export async function mount(host, tripId) {
@@ -165,11 +188,10 @@ export async function mount(host, tripId) {
   const coverage=el('div',{class:'map-coverage',role:'status',text:'הורידו מפה כדי לצפות ברחובות ובמקומות אופליין'});
   const date=el('select',{class:'field','aria-label':'בחירת יום במפה'});
   const packageChoice=el('select',{class:'field','aria-label':'בחירת אזור מפה'});
-  if(!navigator.onLine)chosenBasemap='streets';
   const basemapChoice=el('select',{class:'field map-basemap-choice','aria-label':'סוג מפה'},[
     el('option',{value:'streets',text:'רחובות · אופליין אחרי הורדה'}),
-    el('option',{value:'satellite',text:'תמונת לוויין · אונליין'}),
-    el('option',{value:'hybrid',text:'לוויין ושמות מקומות · אונליין'}),
+    el('option',{value:'satellite',text:'תמונת לוויין · אופליין אחרי הורדה'}),
+    el('option',{value:'hybrid',text:'לוויין ושמות מקומות · אופליין אחרי הורדה'}),
     el('option',{value:'terrain',text:'תבליט וטופוגרפיה · אונליין'}),
   ]);
   basemapChoice.value=chosenBasemap;
@@ -198,22 +220,29 @@ export async function mount(host, tripId) {
     if(disposed)return;
     const revision=++mapRevision;
     const [saved, available]=await Promise.all([store.listPackages(),packs.catalog()]);
-    const ready=saved.filter(p=>p.state==='ready');
+    const ready=saved.filter(p=>p.state==='ready'&&p.type!=='satellite');
+    const satelliteReady=saved.filter(p=>p.state==='ready'&&p.type==='satellite');
     if(disposed||revision!==mapRevision)return;
-    for(const option of basemapChoice.options)option.disabled=option.value!=='streets'&&!navigator.onLine;
-    if(!navigator.onLine&&chosenBasemap!=='streets'){chosenBasemap='streets';basemapChoice.value='streets';toast('ללא אינטרנט מוצגת מפת הרחובות שהורדה');}
-    const choices=available.filter(p=>navigator.onLine||ready.some(r=>r.id===p.id));
+    for(const option of basemapChoice.options)option.disabled=!navigator.onLine&&(option.value==='terrain'||(option.value!=='streets'&&!satelliteReady.length));
+    if(!navigator.onLine&&(chosenBasemap==='terrain'||(chosenBasemap!=='streets'&&!satelliteReady.length))){chosenBasemap='streets';basemapChoice.value='streets';toast('ללא חבילת לוויין מוכנה מוצגת מפת הרחובות');}
+    basemapChoice.value=chosenBasemap;
+    const choices=available.filter(p=>p.type!=='satellite'&&((navigator.onLine&&p.chunks)||ready.some(r=>r.id===p.id)||satelliteReady.some(r=>r.baseId===p.id)));
     if(!ready.length&&!chosenPackage&&navigator.onLine)chosenPackage='thailand';
-    packageChoice.replaceChildren(el('option',{value:'',text:'כל המפות שהורדו'}),...choices.map(p=>el('option',{value:p.id,selected:p.id===chosenPackage,text:`${p.name}${ready.some(r=>r.id===p.id)?'':' · אונליין'}`})));
+    const downloaded=p=>chosenBasemap==='satellite'||chosenBasemap==='hybrid'?satelliteReady.some(r=>r.baseId===p.id):ready.some(r=>r.id===p.id);
+    packageChoice.replaceChildren(el('option',{value:'',text:'כל המפות שהורדו'}),...choices.map(p=>el('option',{value:p.id,selected:p.id===chosenPackage,text:`${p.name}${downloaded(p)?'':' · אונליין'}`})));
     if(chosenPackage&&!choices.some(p=>p.id===chosenPackage)){chosenPackage='';packageChoice.value='';}
-    const selected=chosenPackage?(ready.find(p=>p.id===chosenPackage)||choices.find(p=>p.id===chosenPackage)):null;
+    const selected=chosenPackage?(ready.find(p=>p.id===chosenPackage)||(navigator.onLine?choices.find(p=>p.id===chosenPackage):null)):null;
     const camera=preserveCamera?renderer?.camera():undefined;
     renderer?.destroy(); renderer=null;
     try{
-      renderer=createMap(mapHost,{packages:selected?[selected]:ready,places:filtered(),basemap:chosenBasemap,camera,onPlace:showPlace,onPick:showPlace,onCoverage:(covers,local)=>{
-        coverage.hidden=covers&&local;
+      const orderedSatellite=[...satelliteReady].sort((a,b)=>Number(b.baseId===chosenPackage)-Number(a.baseId===chosenPackage));
+      renderer=createMap(mapHost,{packages:selected?[selected]:ready,satellitePackages:orderedSatellite,places:filtered(),basemap:chosenBasemap,camera,onPlace:showPlace,onPick:showPlace,onCoverage:(covers,local,detail,labelsLocal)=>{
+        coverage.hidden=covers&&local&&chosenBasemap==='streets';
         if(chosenBasemap!=='streets'){
-          coverage.textContent=chosenBasemap==='terrain'?'מפת תבליט אונליין — אינה כלולה בהורדה': 'תמונת לוויין אונליין · רזולוציה כ־10 מטר · אינה כלולה בהורדה';
+          coverage.textContent=chosenBasemap==='terrain'?'מפת תבליט אונליין — אינה כלולה בהורדה'
+            :local?`לוויין מהטלפון · אופליין${detail?'':' · מעבר לרמת הפירוט שהורדה'}${chosenBasemap==='hybrid'&&!labelsLocal?' · הורידו גם רחובות לשמות אופליין':''}`
+            :satelliteReady.length?(covers?'לוויין אונליין — האזור הזה אינו בחבילות שהורדו':'האזור הזה אינו בחבילות הלוויין שהורדו — בחרו אזור אחר או הורידו חבילה')
+            :'תמונת לוויין אונליין — הורידו חבילת לוויין לשימוש ללא אינטרנט';
           return;
         }
         coverage.textContent=covers&&!local?'צפייה אונליין — הורידו את המפה לשימוש ללא אינטרנט':ready.length?'האזור הזה אינו בחבילות שהורדו':'הורידו מפה כדי לצפות ברחובות ובמקומות אופליין';

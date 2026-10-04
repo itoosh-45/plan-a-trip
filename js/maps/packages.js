@@ -7,11 +7,41 @@ export function formatBytes(bytes) {
   return new Intl.NumberFormat('he', { maximumFractionDigits: 1 }).format(bytes / 1048576) + ' MB';
 }
 export async function catalog() {
-  const response = await fetch('./data/map-packages.json');
-  if (!response.ok) throw new Error('רשימת המפות אינה זמינה');
-  return (await response.json()).packages;
+  const responses = await Promise.all(['./data/map-packages.json','./data/world-map-packages.json'].map(url=>fetch(url)));
+  if (responses.some(response=>!response.ok)) throw new Error('רשימת המפות אינה זמינה');
+  const lists=await Promise.all(responses.map(response=>response.json()));
+  const entries=new Map(lists.flatMap(list=>list.packages).map(meta=>[meta.id,meta]));
+  // Prepared country archives are persisted in the map DB after download, so
+  // their actual metadata survives an offline restart without server access.
+  for(const meta of await store.listPackages())if(meta.chunks)entries.set(meta.id,meta);
+  if(navigator.onLine){
+    try{
+      const response=await fetch('./api/map-packages',{cache:'no-store'});
+      if(response.ok)for(const meta of (await response.json()).packages)entries.set(meta.id,meta);
+    }catch{/* The static catalogue and existing downloads remain available. */}
+  }
+  return [...entries.values()];
+}
+export async function preparePackage(meta,{onStatus=()=>{},signal}={}) {
+  let response=await fetch('./api/prepare-map-package',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:meta.id}),signal});
+  let state=await response.json();
+  if(!response.ok)throw new Error(state.error||'שרת הכנת המפות אינו זמין');
+  while(state.state!=='ready'){
+    if(state.state==='failed')throw new Error(state.error||'הכנת המפה נכשלה');
+    if(!['queued','building'].includes(state.state))throw new Error('הכנת המפה נעצרה. נסו להכין את החבילה שוב');
+    onStatus(state.state==='queued'?'ממתין להכנת החבילה בשרת':'מכין חבילה בשרת — ההורדה לטלפון עוד לא התחילה');
+    await new Promise((resolve,reject)=>{
+      const abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(new DOMException('ההמתנה נעצרה','AbortError'));};
+      const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve();},5000);
+      signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
+    });
+    response=await fetch(`./api/map-package?id=${encodeURIComponent(meta.id)}`,{signal,cache:'no-store'});
+    state=await response.json();if(!response.ok)throw new Error(state.error||'שרת הכנת המפות אינו זמין');
+  }
+  return state.package;
 }
 export async function downloadPackage(meta, { signal, onProgress = () => {} } = {}) {
+  if(!meta.chunks?.length||!Number.isSafeInteger(meta.bytes)||meta.bytes<=0)throw new Error('הכינו את החבילה כדי לראות את גודל ההורדה');
   if (activeDownloads.has(meta.id)) throw new Error('המפה כבר בהורדה');
   const controller = new AbortController();
   const externalSignal = signal;

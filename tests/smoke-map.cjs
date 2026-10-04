@@ -19,18 +19,21 @@ const assert=require('node:assert/strict');
     app.setActiveTrip(trip.id);app.navigate('map');
     await navigator.serviceWorker.ready;
   });
-  await page.waitForSelector('.maplibregl-canvas');await page.waitForTimeout(3500);
+  try { await page.waitForSelector('.maplibregl-canvas'); }
+  catch(error){console.log('map failure:',await page.locator('body').innerText(),JSON.stringify(errors));await browser.close();throw error;}
+  await page.waitForTimeout(3500);
   fs.mkdirSync('scratch/screenshots',{recursive:true});
   await page.screenshot({path:'scratch/screenshots/map-phone.png',fullPage:true});
   console.log('markers:',await page.locator('.map-pin').count());
   await page.getByRole('button',{name:'הורדת מפות',exact:true}).click();
   await page.waitForSelector('.map-country-heading');
   const countries=await page.locator('.map-country-heading .grow').allTextContents();
-  assert.deepEqual(countries,['גאורגיה','ישראל','תאילנד']);
-  await page.getByRole('searchbox',{name:'חיפוש מדינה'}).fill('תאילנד');
+  assert.ok(countries.length>=250);
+  assert.deepEqual(countries,[...countries].sort((a,b)=>a.localeCompare(b,'he')));
+  await page.getByRole('searchbox',{name:'חיפוש מפות'}).fill('תאילנד');
   assert.equal(await page.locator('.map-country:visible').count(),1);
   await page.locator('.map-country:visible summary').click();
-  assert.equal(await page.locator('.map-country:visible .map-download-row:visible').count(),6);
+  assert.ok(await page.locator('.map-country:visible .map-download-row:visible').count()>=6);
   await page.getByRole('button',{name:'סגור',exact:true}).click();
   const dates=await page.locator('.map-place-date').first().evaluate(node=>({size:getComputedStyle(node).fontSize,parent:getComputedStyle(node.parentElement).fontSize,align:getComputedStyle(node).textAlign}));
   assert.equal(parseFloat(dates.size)/parseFloat(dates.parent),0.7);assert.equal(dates.align,'right');

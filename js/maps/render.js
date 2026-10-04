@@ -2,7 +2,7 @@ import { getLocalSource, getRemoteSource } from './packages.js';
 
 const archives = new Map();
 let installed = false;
-export function createMap(container, { packages, places, basemap = 'streets', camera, onPlace, onPick, onCoverage, onError }) {
+export function createMap(container, { packages, satellitePackages = [], places, basemap = 'streets', camera, onPlace, onPick, onCoverage, onError }) {
   const gl = window.maplibregl, pm = window.pmtiles;
   if (!gl || !pm) throw new Error('רכיבי המפה אינם זמינים. פתחו את האפליקציה שוב עם אינטרנט');
   if (!installed) {
@@ -20,7 +20,8 @@ export function createMap(container, { packages, places, basemap = 'streets', ca
   const color = name => colors.getPropertyValue(name).trim();
   const sources = {}, layers = [{ id: 'background', type: 'background', paint: { 'background-color': color('--map-land') } }];
   const raster = basemap !== 'streets';
-  if (raster) {
+  const localImagery = basemap !== 'terrain' && satellitePackages.length > 0;
+  if (raster && navigator.onLine) {
     const terrain = basemap === 'terrain';
     const layer = terrain ? 'terrain-light_3857' : 's2cloudless-2024_3857';
     sources.imagery = { type:'raster', tileSize:256, maxzoom:13,
@@ -29,7 +30,17 @@ export function createMap(container, { packages, places, basemap = 'streets', ca
         ? 'Data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors and <a href="https://maps.eox.at/#data">others</a> · Rendering © <a href="https://maps.eox.at/">EOX::Maps</a>'
         : '<a href="https://cloudless.eox.at/">EOxCloudless</a> by <a href="https://eox.at/">EOX IT Services GmbH</a> (Contains modified Copernicus Sentinel data 2024) · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>',
     };
-    layers.push({id:'imagery',type:'raster',source:'imagery',paint:{'raster-fade-duration':0}});
+    layers.push({id:'imagery',type:'raster',source:'imagery',layout:{visibility:localImagery?'none':'visible'},paint:{'raster-fade-duration':0}});
+  }
+  if (raster && localImagery) {
+    // Overview regions first, then city detail. Raster maxzoom lets MapLibre
+    // overzoom parent imagery correctly instead of stretching the wrong tile.
+    for (const pack of [...satellitePackages].sort((a,b)=>a.maxZoom-b.maxZoom)) {
+      archives.set(pack.id,new pm.PMTiles(getLocalSource(pack)));
+      sources[pack.id]={type:'raster',tileSize:256,tiles:[`tripmap://${pack.id}/{z}/{x}/{y}`],bounds:pack.bounds,minzoom:pack.minZoom,maxzoom:pack.maxZoom,
+        attribution:'<a href="https://cloudless.eox.at/">EOxCloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024) · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>'};
+      layers.push({id:`${pack.id}-imagery`,type:'raster',source:pack.id,paint:{'raster-fade-duration':0}});
+    }
   }
   // Broad regions first; detailed cities draw above them. Archives remain immutable.
   const sorted = (basemap === 'satellite' ? [] : [...packages]).sort((a,b) => (b.bounds[2]-b.bounds[0])*(b.bounds[3]-b.bounds[1]) - (a.bounds[2]-a.bounds[0])*(a.bounds[3]-a.bounds[1]));
@@ -55,8 +66,9 @@ export function createMap(container, { packages, places, basemap = 'streets', ca
   }
   sources.route = { type:'geojson', data:{type:'FeatureCollection',features:[]} };
   layers.push({id:'planned-route', type:'line',source:'route',paint:{'line-color':color('--color-highlight'),'line-width':3,'line-dasharray':[1.5,2]}});
-  const center = places.length ? [places[0].lng,places[0].lat] : packages.length ? [(packages[0].bounds[0]+packages[0].bounds[2])/2,(packages[0].bounds[1]+packages[0].bounds[3])/2] : [100.5,13.75];
-  const map = new gl.Map({container,style:{version:8,sources,layers},center,zoom:packages.length?6:3,...camera, attributionControl:false, renderWorldCopies:false});
+  const preferred=packages[0]||satellitePackages[0];
+  const center = places.length ? [places[0].lng,places[0].lat] : preferred ? [(preferred.bounds[0]+preferred.bounds[2])/2,(preferred.bounds[1]+preferred.bounds[3])/2] : [100.5,13.75];
+  const map = new gl.Map({container,style:{version:8,sources,layers},center,zoom:preferred?6:3,...camera, attributionControl:false, renderWorldCopies:false});
   map.addControl(new gl.NavigationControl({showCompass:false}), 'top-left');
   map.addControl(new gl.AttributionControl({compact:!raster}), 'bottom-left');
   let markers = [], currentPlaces = places, pickTimer, downPoint;
@@ -77,10 +89,21 @@ export function createMap(container, { packages, places, basemap = 'streets', ca
   map.on('load',()=>{updatePlaces(currentPlaces); coverage();});
   map.on('error', event => onError?.(event.error?.message || 'המפה לא נטענה. נסו להוריד אותה מחדש'));
   function coverage() {
-    if (raster) { onCoverage(true, false); return; }
     const bounds = map.getBounds(), zoom=map.getZoom();
     const corners = [[bounds.getWest(),bounds.getSouth()],[bounds.getWest(),bounds.getNorth()],[bounds.getEast(),bounds.getSouth()],[bounds.getEast(),bounds.getNorth()]];
     const covers = (p,point)=>point[0]>=p.bounds[0]&&point[0]<=p.bounds[2]&&point[1]>=p.bounds[1]&&point[1]<=p.bounds[3]&&zoom<=p.maxZoom+3;
+    if (raster) {
+      const imageryCovers=(p,point)=>point[0]>=p.bounds[0]&&point[0]<=p.bounds[2]&&point[1]>=p.bounds[1]&&point[1]<=p.bounds[3];
+      const local=localImagery&&corners.every(point=>satellitePackages.some(p=>imageryCovers(p,point)));
+      const detail=local&&corners.every(point=>satellitePackages.some(p=>imageryCovers(p,point)&&zoom<=p.maxZoom));
+      if(map.getLayer('imagery')){
+        const visibility=local?'none':'visible';
+        if(map.getLayoutProperty('imagery','visibility')!==visibility)map.setLayoutProperty('imagery','visibility',visibility);
+      }
+      const labelsLocal=corners.every(point=>packages.some(p=>p.state==='ready'&&covers(p,point)));
+      onCoverage(local||navigator.onLine,local,detail,labelsLocal);
+      return;
+    }
     onCoverage(corners.every(point=>packages.some(p=>covers(p,point))), corners.every(point=>packages.some(p=>p.state==='ready'&&covers(p,point))));
   }
   map.on('moveend',coverage);
@@ -92,7 +115,12 @@ export function createMap(container, { packages, places, basemap = 'streets', ca
   const observer = new ResizeObserver(()=>map.resize()); observer.observe(container);
   return {
     updatePlaces,
-    fitPlaces() { if(currentPlaces.length) {const bounds = new gl.LngLatBounds();currentPlaces.forEach(p=>bounds.extend([p.lng,p.lat]));map.fitBounds(bounds,{padding:60,maxZoom:14,duration:0});} },
+    fitPlaces() { if(currentPlaces.length) {
+      const bounds = new gl.LngLatBounds();currentPlaces.forEach(p=>bounds.extend([p.lng,p.lat]));
+      const covering=satellitePackages.filter(pack=>currentPlaces.every(p=>p.lng>=pack.bounds[0]&&p.lng<=pack.bounds[2]&&p.lat>=pack.bounds[1]&&p.lat<=pack.bounds[3]));
+      const maxZoom=raster&&basemap!=='terrain'?(covering.length?Math.max(...covering.map(p=>p.maxZoom)):13):14;
+      map.fitBounds(bounds,{padding:60,maxZoom,duration:0});
+    } },
     pickCenter() { onPick(map.getCenter()); },
     resize() { map.resize(); },
     camera() { return {center:map.getCenter().toArray(),zoom:map.getZoom(),bearing:map.getBearing(),pitch:map.getPitch()}; },

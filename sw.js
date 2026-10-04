@@ -55,6 +55,7 @@ const SHELL = [
   './vendor/maplibre-gl.css',
   './vendor/pmtiles.js',
   './data/map-packages.json',
+  './data/world-map-packages.json',
 ];
 
 self.addEventListener('install', event => {

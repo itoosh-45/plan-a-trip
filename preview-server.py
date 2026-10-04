@@ -2,6 +2,7 @@
 import json, sys, time, urllib.request, urllib.parse, urllib.error
 from pathlib import Path
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from map_package_service import PackageService
 
 ROOT = Path(__file__).resolve().parent
 ASSETS = (ROOT / sys.argv[2]).resolve() if len(sys.argv)>2 else ROOT
@@ -9,6 +10,7 @@ if not ASSETS.is_relative_to(ROOT): raise RuntimeError('Preview assets must be i
 HOSTS = {'maps.app.goo.gl','goo.gl','www.google.com','google.com','maps.google.com'}
 FILES = {'index.html','sw.js','manifest.json','robots.txt'}
 DIRS = {'js','css','fonts','icons','vendor','data','map-packages'}
+PACKAGES=PackageService(ASSETS)
 
 def map_url(raw):
     url = urllib.parse.urlsplit(raw)
@@ -27,7 +29,7 @@ class Preview(SimpleHTTPRequestHandler):
         if any(p.startswith('.') or p in ('..',) for p in parts): return False
         return parts[0] in DIRS or (len(parts)==1 and parts[0] in FILES)
     def end_headers(self):
-        self.send_header('Cache-Control','no-cache' if self.path.endswith('sw.js') else 'public, max-age=3600')
+        self.send_header('Cache-Control','no-store' if self.path.startswith('/api/') else 'no-cache' if self.path.endswith('sw.js') else 'public, max-age=3600')
         self.send_header('X-Content-Type-Options','nosniff')
         super().end_headers()
     def log_message(self, fmt, *args):
@@ -49,6 +51,11 @@ class Preview(SimpleHTTPRequestHandler):
         super().do_HEAD()
     def do_GET(self):
         url=urllib.parse.urlsplit(self.path)
+        if url.path=='/api/map-packages':self.answer({'packages':PACKAGES.ready()});return
+        if url.path=='/api/map-package':
+            identity=urllib.parse.parse_qs(url.query).get('id',[''])[0]
+            if identity not in PACKAGES.catalog:self.answer({'error':'המפה אינה בקטלוג'},400);return
+            self.answer(PACKAGES.status(identity));return
         if url.path=='/api/map-search':
             if self.limited():return
             q=urllib.parse.parse_qs(url.query).get('q',[''])[0].strip()
@@ -70,6 +77,17 @@ class Preview(SimpleHTTPRequestHandler):
         if path.is_dir() and not (path/'index.html').exists():self.send_error(404);return
         super().do_GET()
     def do_POST(self):
+        if urllib.parse.urlsplit(self.path).path=='/api/prepare-map-package':
+            if self.limited():return
+            try:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=256:self.answer({'error':'בקשה אינה תקינה'},400);return
+                identity=json.loads(self.rfile.read(length)).get('id')
+                if not isinstance(identity,str):self.answer({'error':'בקשה אינה תקינה'},400);return
+                self.answer(PACKAGES.prepare(identity))
+            except ValueError as error:self.answer({'error':str(error)},400)
+            except Exception:self.answer({'error':'שרת ההכנה אינו זמין'},503)
+            return
         if urllib.parse.urlsplit(self.path).path!='/api/resolve-map-link':self.send_error(404);return
         if self.limited():return
         try:

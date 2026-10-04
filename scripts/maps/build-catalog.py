@@ -32,4 +32,7 @@ for identity,name,kind,bounds in DEFINITIONS:
     country='ישראל' if identity=='israel' else 'גאורגיה' if identity=='georgia' else 'תאילנד'
     packages.append({'id':identity,'name':name,'country':country,'kind':kind,'bounds':bounds,'minZoom':0,'maxZoom':15,'version':'20261003','bytes':size,'chunkBytes':4*1024*1024,'chunks':chunks,'attribution':'© OpenStreetMap · Protomaps'})
     print(identity,size,flush=True)
-(ROOT/'data/map-packages.json').write_text(json.dumps({'version':1,'packages':packages},ensure_ascii=False,separators=(',',':')),encoding='utf-8')
+catalog_path=ROOT/'data/map-packages.json'
+if catalog_path.exists():
+    packages += [p for p in json.loads(catalog_path.read_text(encoding='utf-8'))['packages'] if p.get('type')=='satellite']
+catalog_path.write_text(json.dumps({'version':1,'packages':packages},ensure_ascii=False,separators=(',',':')),encoding='utf-8')
