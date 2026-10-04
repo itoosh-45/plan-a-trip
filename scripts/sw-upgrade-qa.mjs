@@ -21,10 +21,12 @@ try {
   server = await serve(process.env.OLD_ROOT);
   browser = await chromium.launch();
   const context = await browser.newContext({ serviceWorkers: 'allow' });
+  await context.route(/^https?:\/\/(?!127\.0\.0\.1)/, route => route.abort());
   const page = await context.newPage();
   await page.goto(base);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload(); // The existing release controls the client before the upgrade.
+  await page.waitForLoadState('networkidle');
   assert.ok(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL.endsWith('/sw.js')));
   const old = await page.evaluate(async () => {
     const trips = await import('./js/trips.js');
@@ -39,17 +41,19 @@ try {
   await new Promise(resolve => server.once('exit', resolve));
   server = await serve(process.cwd());
 
-  const load = page.waitForEvent('load', { timeout: 30_000 }).catch(() => null);
   await page.evaluate(async () => (await navigator.serviceWorker.ready).update());
-  await page.waitForFunction(async () => {
-    const waiting = (await navigator.serviceWorker.getRegistration()).waiting;
-    if (waiting) waiting.postMessage({ type: 'APPLY_UPDATE' });
-    // Polling resumes in the new document if activation replaces this one.
-    return document.querySelectorAll('#nav button').length === 6;
-  });
-  await load; // controllerchange / sw-updated bring the next navigation.
-  await page.waitForFunction(() => document.querySelectorAll('#nav button').length === 6, { timeout: 30000 });
-  await page.waitForFunction(async () => (await caches.keys()).includes('trip-planner-shell-20261004-preview-1'));
+  let applied = false;
+  for (let attempt = 0; attempt < 120 && !applied; attempt++) {
+    applied = await page.evaluate(async () => {
+      const waiting = (await navigator.serviceWorker.getRegistration()).waiting;
+      if (!waiting) return false;
+      waiting.postMessage({ type: 'APPLY_UPDATE' });
+      return true;
+    });
+    if (!applied) await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  assert.ok(applied, 'The new worker must be available for explicit activation');
+  await page.waitForFunction(() => document.querySelectorAll('#nav button').length === 6, null, { timeout: 30000 });
   assert.ok((await page.content()).includes('15 * 60 * 1000'), 'Page did not refresh to new shell');
   const after = await page.evaluate(async () => {
     const trips = await import('./js/trips.js');

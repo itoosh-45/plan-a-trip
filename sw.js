@@ -112,7 +112,9 @@ self.addEventListener('fetch', event => {
     // An in-flight request handled by the previous worker can recreate its
     // cache after activation. Read only this release, never another cache.
     const cache = await caches.open(CACHE);
-    const cached = await cache.match(request, { ignoreSearch: true });
+    const cached = request.mode === 'navigate'
+      ? await cache.match('./index.html')
+      : await cache.match(request, { ignoreSearch: true });
     if (cached) return cached;
     try {
       const response = await fetch(request);
