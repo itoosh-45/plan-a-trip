@@ -116,8 +116,6 @@ export async function parseBackup(file) {
 /** משחזר גיבוי שאושר — מחליף את כל הנתונים במכשיר (כל הטיולים). */
 export async function restore(payload) {
   const result = await db.importAll(payload, 'replace');
-  const maps = await import('./maps/store.js');
-  await maps.clearPlaces();
   document.dispatchEvent(new CustomEvent('data:changed', { detail: { store: '*', op: 'restore' } }));
   return result;
 }
@@ -177,8 +175,6 @@ export async function restoreTrip(payload, tripId, mode = 'replace') {
   }
 
   const result = await db.replaceTripData(stores, tripId);
-  const maps = await import('./maps/store.js');
-  await maps.deleteTripPlaces(tripId);
   document.dispatchEvent(new CustomEvent('data:changed', { detail: { store: '*', op: 'restoreTrip' } }));
   return result;
 }
