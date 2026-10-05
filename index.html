@@ -14,8 +14,6 @@
 <link rel="icon" href="./icons/icon-192.png">
 <link rel="stylesheet" href="./css/tokens.css">
 <link rel="stylesheet" href="./css/app.css">
-<link rel="stylesheet" href="./vendor/maplibre-gl.css">
-<link rel="stylesheet" href="./css/map.css">
 </head>
 <body>
 <header id="topbar"></header>
@@ -25,8 +23,6 @@
 
 <script src="./vendor/chart.umd.js"></script>
 <script src="./vendor/xlsx.full.min.js"></script>
-<script src="./vendor/maplibre-gl.js"></script>
-<script src="./vendor/pmtiles.js"></script>
 <script type="module">
   import { boot, registerScreen } from './js/app.js';
   import { mount as prepMount } from './js/screens/prep.js';
@@ -34,15 +30,12 @@
   import { mount as expensesMount } from './js/screens/expenses.js';
   import { mount as summaryMount } from './js/screens/summary.js';
   import { mount as settingsMount } from './js/screens/settings.js';
-  import { mount as mapMount } from './js/screens/map.js';
-  import { activeDownloads } from './js/maps/packages.js';
 
   registerScreen('prep', prepMount);
   registerScreen('plan', planMount);
   registerScreen('expenses', expensesMount);
   registerScreen('summary', summaryMount);
   registerScreen('settings', settingsMount);
-  registerScreen('map', mapMount);
   await boot();
 
   if ('serviceWorker' in navigator) {
@@ -50,7 +43,7 @@
     let reloading = false;
     const reloadWhenIdle = () => {
       if (reloading) return;
-      const busy = activeDownloads.size || document.querySelector('.sheet-backdrop')
+      const busy = document.querySelector('.sheet-backdrop')
         || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
       if (busy) { setTimeout(reloadWhenIdle, 3000); return; }
       reloading = true;
