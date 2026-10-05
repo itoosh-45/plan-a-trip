@@ -7,12 +7,11 @@ import * as backup from './backup.js';
 import * as sheets from './sheets.js';
 import { maybeOpenWelcome } from './welcome.js';
 
-// שישה טאבים. התוויות קצרות בכוונה — ברוחב טלפון תווית בת שתי מילים
+// הטאבים הראשיים. התוויות קצרות בכוונה — ברוחב טלפון תווית בת שתי מילים
 // נשברת לשתי שורות ומעוותת את גובה הסרגל.
 const SCREENS = [
   { key: 'prep',     label: 'הכנה',   iconName: 'check' },
   { key: 'plan',     label: 'תכנון',  iconName: 'plan' },
-  { key: 'map',      label: 'מפה',    iconName: 'map' },
   { key: 'expenses', label: 'הוצאות', iconName: 'expenses' },
   { key: 'summary',  label: 'סיכום',  iconName: 'summary' },
   { key: 'settings', label: 'הגדרות', iconName: 'settings' },
