@@ -10,10 +10,23 @@ export async function catalog() {
   const responses = await Promise.all(['./data/map-packages.json','./data/world-map-packages.json'].map(url=>fetch(url)));
   if (responses.some(response=>!response.ok)) throw new Error('רשימת המפות אינה זמינה');
   const lists=await Promise.all(responses.map(response=>response.json()));
-  const entries=new Map(lists.flatMap(list=>list.packages).map(meta=>[meta.id,meta]));
+  // Merge catalogues by logical country + map type, not only by technical id.
+  // The fixed catalogue and the worldwide catalogue overlap (for example
+  // "israel" and "world-isr"), which previously produced duplicate countries.
+  // Prefer an already-prepared entry over an unprepared worldwide placeholder.
+  const entries=new Map();
+  const logicalKey=meta=>{
+    const country=String(meta.country||meta.name||'').replace(/\s+—\s+לוויין$/,'').normalize('NFKC').trim().toLocaleLowerCase('he');
+    const type=meta.type==='satellite'?'satellite':'streets';
+    return country+'|'+type;
+  };
+  for(const meta of lists.flatMap(list=>list.packages)){
+    const key=logicalKey(meta), previous=entries.get(key);
+    if(!previous || (!!meta.chunks&&!previous.chunks) || (!!meta.prepared&&!previous.prepared)) entries.set(key,meta);
+  }
   // Prepared country archives are persisted in the map DB after download, so
   // their actual metadata survives an offline restart without server access.
-  for(const meta of await store.listPackages())if(meta.chunks)entries.set(meta.id,meta);
+  for(const meta of await store.listPackages())if(meta.chunks)entries.set(logicalKey(meta),meta);
   if(navigator.onLine){
     try{
       const response=await fetch('./api/map-packages',{cache:'no-store'});
