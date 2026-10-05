@@ -29,6 +29,10 @@ const CATEGORY_ICONS = [
 ];
 
 /** כל סקשן בהגדרות נראה אותו דבר: כותרת, משפט הסבר אחד, ואז התוכן. */
+function formatBytes(bytes) {
+  return new Intl.NumberFormat('he', { maximumFractionDigits: 1 }).format(bytes / 1048576) + ' MB';
+}
+
 function section(title, note, children) {
   return card([
     el('h2', { class: 'card-title', text: title }),
