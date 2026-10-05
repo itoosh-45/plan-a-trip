@@ -1,5 +1,3 @@
-import { activeDownloads } from './maps/packages.js';
-
 export const APP_VERSION = '2026.10.04-preview.1';
 let requestedReload = false;
 export async function checkForUpdate() {
@@ -21,8 +19,8 @@ export async function checkForUpdate() {
   return registration.waiting ? 'available' : 'current';
 }
 export async function applyUpdate() {
-  if (document.querySelector('.sheet-backdrop') || activeDownloads.size) {
-    throw new Error('סיימו את העריכה או הורדת המפה לפני העדכון');
+  if (document.querySelector('.sheet-backdrop')) {
+    throw new Error('סיימו את העריכה לפני העדכון');
   }
   const registration = await navigator.serviceWorker.getRegistration();
   if (!registration?.waiting) throw new Error('אין עדכון שממתין להתקנה');
